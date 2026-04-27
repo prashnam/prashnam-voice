@@ -55,8 +55,17 @@ def _slugify(name: str) -> str:
 # Models
 # ----------------------------------------------------------------------------
 
-SEGMENT_TYPES = ("question", "option", "body")
+SEGMENT_TYPES = (
+    "question", "option",                        # poll
+    "body",                                      # announcement
+    "prompt", "menu", "response", "bridge", "terminator",  # ivr
+)
 DEFAULT_DOMAIN = "poll"
+
+# DTMF + control keys recognized as edge keys on IVR menu segments.
+DTMF_KEYS = ("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "*", "#")
+SPECIAL_EDGE_KEYS = ("timeout", "invalid")
+ALL_EDGE_KEYS = (*DTMF_KEYS, *SPECIAL_EDGE_KEYS)
 
 # Defaults for new projects. The prashnam.ai team can override per-project
 # from settings; existing projects without these fields stay un-templated.
@@ -89,10 +98,18 @@ def _migrate_per_rotation(
 @dataclass
 class Segment:
     id: str
-    type: str                                  # "question" | "option" | "body"
+    type: str                                  # see SEGMENT_TYPES
     english: str = ""
     use_template: bool = True                  # opt out of project's wrapping
     lock_at_end: bool = False                  # NOTA / "Don't know" — never shuffles
+    # IVR-only: per-DTMF-key edge to the next segment. Keys come from
+    # ALL_EDGE_KEYS ("1"-"9", "0", "*", "#", "timeout", "invalid").
+    # Empty for non-IVR segments.
+    edges: dict[str, str] = field(default_factory=dict)
+    # IVR-only: persisted DAG canvas position. Used for the SVG editor
+    # so node positions survive reloads. (0, 0) means "auto-layout".
+    x: float = 0.0
+    y: float = 0.0
     # Per-language voice / pace overrides. Take precedence over the
     # project-level voice / pace for this segment when set.
     voices: dict[str, str] = field(default_factory=dict)
@@ -114,6 +131,9 @@ class Segment:
             english=d.get("english", ""),
             use_template=bool(d.get("use_template", True)),
             lock_at_end=bool(d.get("lock_at_end", False)),
+            edges={k: v for k, v in (d.get("edges") or {}).items() if isinstance(v, str)},
+            x=float(d.get("x", 0.0) or 0.0),
+            y=float(d.get("y", 0.0) or 0.0),
             voices=dict(d.get("voices") or {}),
             paces=dict(d.get("paces") or {}),
             translations=_migrate_per_rotation(d.get("translations")),
@@ -151,6 +171,10 @@ class Project:
     question_template: str = DEFAULT_QUESTION_TEMPLATE
     option_template: str = DEFAULT_OPTION_TEMPLATE
     body_template: str = ""           # used by announcement domain
+    # IVR-only: id of the segment a caller hears first.
+    # Empty string → auto-pick the first prompt segment, falling back to
+    # the first segment in declared order.
+    start_segment_id: str = ""
     # Rotations — when `rotation_count` > 1, each regen produces one set of
     # audio per rotation. "r0" is always the canonical (declared) order;
     # additional rotations shuffle the non-locked options. Locked options
@@ -195,6 +219,7 @@ class Project:
             question_template=d.get("question_template", DEFAULT_QUESTION_TEMPLATE),
             option_template=d.get("option_template", DEFAULT_OPTION_TEMPLATE),
             body_template=d.get("body_template", ""),
+            start_segment_id=d.get("start_segment_id", "") or "",
             rotation_count=int(d.get("rotation_count", 1) or 1),
             rotation_seed=d.get("rotation_seed"),
             rotations=[list(r) for r in (d.get("rotations") or [])],
@@ -223,6 +248,20 @@ class Project:
         if segment is not None and segment.paces.get(lang):
             return segment.paces[lang]
         return self.paces.get(lang, self.default_pace)
+
+    def resolve_start_segment(self) -> "Segment | None":
+        """Returns the IVR entry-point segment. Honors start_segment_id if
+        it points at a known segment; otherwise picks the first prompt;
+        falls back to the first segment in declared order."""
+        if self.start_segment_id:
+            try:
+                return self.find_segment(self.start_segment_id)
+            except KeyError:
+                pass
+        for s in self.segments:
+            if s.type == "prompt":
+                return s
+        return self.segments[0] if self.segments else None
 
     def option_index(self, seg_id: str) -> int:
         """1-based position among option segments in the canonical (declared)
@@ -620,6 +659,13 @@ class ProjectStore:
     def delete_segment(self, pid: str, seg_id: str) -> None:
         def _do(p: Project):
             p.segments = [s for s in p.segments if s.id != seg_id]
+            # Drop any edges pointing at the deleted segment.
+            for s in p.segments:
+                if s.edges:
+                    s.edges = {k: v for k, v in s.edges.items() if v != seg_id}
+            # Clear the start_segment if it was this one.
+            if p.start_segment_id == seg_id:
+                p.start_segment_id = ""
 
         self.mutate(pid, _do)
         seg_audio = self.project_dir(pid) / "audio" / seg_id
@@ -807,6 +853,61 @@ class ProjectStore:
 
         self.mutate(pid, _do)
         return self.load(pid).find_segment(seg_id)
+
+    # ------------------------------------------------------------------
+    # IVR — edges, positions, start segment
+    # ------------------------------------------------------------------
+
+    def set_segment_edge(
+        self, pid: str, seg_id: str, key: str, target: str | None,
+    ) -> Segment:
+        """Set or clear one DTMF/control edge from `seg_id` keyed on `key`.
+
+        `target=None` clears the edge. Edges are validated: the key must be
+        in ALL_EDGE_KEYS; `target`, if non-None, must be a real segment id
+        in this project. The edge can't point at the source itself.
+        """
+        if key not in ALL_EDGE_KEYS:
+            raise ValueError(
+                f"unknown edge key {key!r}; expected one of {ALL_EDGE_KEYS}"
+            )
+
+        def _do(p: Project) -> None:
+            seg = p.find_segment(seg_id)
+            if target is None:
+                seg.edges.pop(key, None)
+                return
+            if target == seg_id:
+                raise ValueError("an edge cannot point at its own source segment")
+            # Verify the target exists.
+            p.find_segment(target)
+            seg.edges[key] = target
+
+        self.mutate(pid, _do)
+        return self.load(pid).find_segment(seg_id)
+
+    def set_segment_position(
+        self, pid: str, seg_id: str, x: float, y: float,
+    ) -> Segment:
+        """Persist DAG canvas coordinates after the user drags a node."""
+        def _do(p: Project) -> None:
+            seg = p.find_segment(seg_id)
+            seg.x = float(x)
+            seg.y = float(y)
+        self.mutate(pid, _do)
+        return self.load(pid).find_segment(seg_id)
+
+    def set_start_segment(self, pid: str, seg_id: str | None) -> Project:
+        """Set or clear the IVR entry-point segment."""
+        def _do(p: Project) -> None:
+            if seg_id is None or seg_id == "":
+                p.start_segment_id = ""
+                return
+            p.find_segment(seg_id)   # raises if missing
+            p.start_segment_id = seg_id
+        return self.mutate(pid, _do)
+
+    # ------------------------------------------------------------------
 
     def set_segment_use_template(
         self, pid: str, seg_id: str, use: bool

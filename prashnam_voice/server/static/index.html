@@ -20,6 +20,36 @@
 
   <main id="app"></main>
 
+  <dialog id="walk-dialog" class="modal modal-wide">
+    <article id="walk-body">
+      <header class="walk-head">
+        <h2>IVR walk simulator</h2>
+        <button type="button" class="ghost" id="walk-close">Close</button>
+      </header>
+      <div class="walk-row">
+        <span class="muted small">Lang</span>
+        <select id="walk-lang"></select>
+        <span class="muted small">Rotation</span>
+        <select id="walk-rotation"></select>
+      </div>
+      <div id="walk-current" class="walk-current">
+        <span class="walk-tag" id="walk-tag">PROMPT</span>
+        <strong id="walk-title"></strong>
+        <p class="muted small" id="walk-text"></p>
+        <audio id="walk-audio" controls preload="auto"></audio>
+        <p class="muted small" id="walk-hint"></p>
+      </div>
+      <div class="walk-keypad" id="walk-keypad"></div>
+      <p class="muted small" id="walk-history-label">Trail</p>
+      <ol id="walk-history" class="walk-history"></ol>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="walk-reset">Reset</button>
+        <span style="flex:1"></span>
+        <button type="button" class="primary" id="walk-close-2">Done</button>
+      </div>
+    </article>
+  </dialog>
+
   <dialog id="enable-rotations-dialog" class="modal">
     <form method="dialog">
       <h2>Enable option-order rotations</h2>
@@ -283,6 +313,38 @@ ann1,Please remain seated</pre>
         <div class="actions"><button id="save-settings" class="primary">Save settings</button>
           <span id="settings-status" class="muted"></span></div>
       </details>
+
+      <!-- IVR-only DAG canvas. Hidden for non-IVR projects. -->
+      <section id="dag-pane" class="dag-pane" hidden>
+        <header class="dag-pane-head">
+          <h3>Menu graph</h3>
+          <div class="actions">
+            <select id="dag-add-type">
+              <option value="prompt">+ Prompt</option>
+              <option value="menu">+ Menu</option>
+              <option value="response">+ Response</option>
+              <option value="bridge">+ Bridge</option>
+              <option value="terminator">+ Terminator</option>
+            </select>
+            <button id="dag-add-btn" class="primary">Add node</button>
+            <button id="dag-walk-btn" class="ghost">▶ Walk</button>
+            <span class="muted small">drag a node to move · drag from a port to wire</span>
+          </div>
+        </header>
+        <div class="dag-canvas-wrap">
+          <svg id="dag-canvas" class="dag-canvas" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5"
+                      markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#1a3a78"/>
+              </marker>
+            </defs>
+            <g id="dag-edges"></g>
+            <g id="dag-nodes"></g>
+            <path id="dag-rubber" class="dag-rubber" hidden></path>
+          </svg>
+        </div>
+      </section>
 
       <div id="segments"></div>
 

@@ -136,8 +136,8 @@ will render its setup form automatically.
 ## 5. Register a custom domain
 
 A `DomainPack` declares the segment types and validation rules for a project
-shape. Ship `poll` + `announcement` come built in; here's an `ivr-leg`
-example.
+shape. `poll`, `announcement`, and `ivr` come built in; here's an
+`ivr-leg` example for a smaller, single-menu shape.
 
 ```python
 from prashnam_voice.public import (
@@ -171,6 +171,64 @@ register_domain(IVR_LEG)
 Once registered, projects can be created with `domain="ivr-leg"`; the web
 editor's "+ Add ..." button and segment-type validation pick up your spec
 automatically.
+
+## 5b. Building an IVR call flow
+
+The built-in `ivr` domain ships with five segment types
+(`prompt`, `menu`, `response`, `bridge`, `terminator`) plus a DAG of
+DTMF-keyed edges between them. The DAG editor in the web app is built
+on top of the same `ProjectStore` calls shown below.
+
+```python
+from prashnam_voice.public import ProjectStore
+from prashnam_voice.projects import DTMF_KEYS, SPECIAL_EDGE_KEYS  # ("1"…"#") + ("timeout","invalid")
+
+store = ProjectStore(Path("./projects"))
+proj  = store.create("Customer support flow", langs=["en", "hi"], domain="ivr")
+
+greeting = store.add_segment(proj.id, "prompt", "Welcome to Prashnam.")
+menu     = store.add_segment(proj.id, "menu",
+                             "Press 1 for support, 2 for sales, 0 to repeat.")
+support  = store.add_segment(proj.id, "response", "Connecting you to support.")
+sales    = store.add_segment(proj.id, "response", "Connecting you to sales.")
+
+# Wire the menu's DTMF edges.
+store.set_segment_edge(proj.id, menu.id, "1", support.id)
+store.set_segment_edge(proj.id, menu.id, "2", sales.id)
+store.set_segment_edge(proj.id, menu.id, "0", greeting.id)        # repeat the greeting
+store.set_segment_edge(proj.id, menu.id, "timeout", greeting.id)  # caller said nothing
+store.set_segment_edge(proj.id, menu.id, "invalid", greeting.id)  # caller pressed something unmapped
+
+# Edge validation: keys must be in DTMF_KEYS or SPECIAL_EDGE_KEYS, target
+# must exist in the same project, and self-loops raise ValueError.
+# To clear an edge, pass target=None.
+
+# Persist node positions for the DAG canvas.
+store.set_segment_position(proj.id, greeting.id, 80,  80)
+store.set_segment_position(proj.id, menu.id,     80,  220)
+store.set_segment_position(proj.id, support.id,  340, 160)
+store.set_segment_position(proj.id, sales.id,    340, 280)
+
+# Pin the entry point. Empty string ("") means "first segment by declaration".
+store.set_start_segment(proj.id, greeting.id)
+
+# Validate the graph (dangling edges, empty menus, unknown start, …).
+from prashnam_voice import domains as domains_mod
+errs = domains_mod.get("ivr").validate(store.load(proj.id))
+assert not errs, errs
+
+# Walk the graph in code (the web app's "walk simulator" does the same):
+proj  = store.load(proj.id)
+node  = proj.resolve_start_segment()
+while node and node.type != "terminator":
+    print(node.id, node.type, node.english)
+    next_id = node.edges.get("1") or node.edges.get("timeout")
+    node = proj.find_segment(next_id) if next_id else None
+```
+
+Cleanup is automatic: `store.delete_segment(proj.id, sales.id)` removes
+both `sales` and any inbound edges (here: `menu.edges["2"]`), and clears
+`start_segment_id` if it pointed at the deleted node.
 
 ## 6. Bulk CSV import
 

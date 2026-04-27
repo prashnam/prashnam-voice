@@ -4,9 +4,13 @@
 
 ## Status (last updated 2026-04-27)
 
-**Tier 1 complete.** 101 tests passing. Web app + CLI + bootstrap + adapter layer +
-two domains + lexicon + CSV import + public API + onboarding wizard with HF gating
-all shipped. Next up: Tier 2 (IVR + telephony) — Tier 3 (auth/SaaS) remains out of scope.
+**Tier 1 complete + Tier 2 IVR landed.** 151 tests passing. The full
+M2.1 (data + domain pack + edge/position/start API), M2.2 (DAG canvas
+with drag-to-move + drag-to-connect + inline edge editor), and M2.3
+(walk simulator) are shipped. M2.4 (telephony codecs G.711/etc) and
+M2.5 (Twilio/Exotel/Plivo export) are deferred — revisit when there's
+a downstream consumer asking for them. Tier 3 (auth/SaaS) remains out
+of scope.
 
 | Milestone | Status |
 |---|---|
@@ -29,7 +33,12 @@ all shipped. Next up: Tier 2 (IVR + telephony) — Tier 3 (auth/SaaS) remains ou
 | **Per-segment voice / pace overrides** | ✅ done. `Segment.voices: dict[lang, str]` + `Segment.paces: dict[lang, str]`. `Project.voice_for(lang, segment)` resolves through segment → project → language-default hierarchy. `PATCH /api/projects/{pid}/segments/{sid}/override` with Pydantic-`model_fields_set` semantics. Per-cell inline `<select>`s in the editor — picking a non-default highlights cobalt and saves. |
 | **All language coverage** | ✅ done. 23 languages (English + 22 Indic) where IndicTrans2 + Indic Parler-TTS overlap. Per-language voice pool from the model card. New projects default to en + hi. |
 | **install.py daily-launcher polish** | ✅ done. Walks ports 8765..8775 when 8765 is busy; fast-skips pip when egg-info ≥ pyproject.toml mtime. Bootstrap page probes the same range. |
-| **M2.1–2.5 — IVR + telephony** | pending (Tier 2 — see milestones below) |
+| **M2.1 — IVR domain pack** | ✅ done. New `ivr` domain with `prompt`/`menu`/`response`/`bridge`/`terminator` segment types. `Segment.edges: dict[str, str]` keyed by DTMF or special keys. `Segment.x/y` for canvas positions. `Project.start_segment_id` pin with `resolve_start_segment()` falling back to first declared. Validation rejects dangling edges, unknown start, dead-end menus. Backward-compat on load: old projects auto-fill `edges={}`/`x=y=0`. |
+| **M2.1 — IVR REST API** | ✅ done. `GET /api/ivr-keys` (DTMF + special), `PATCH /api/projects/{pid}/segments/{sid}/edge` (set/clear with self-loop + unknown-key + missing-target validation), `PATCH .../position` (drag persistence), `PATCH /api/projects/{pid}/start-segment`. Segment delete cascades through inbound edges and clears `start_segment_id` if it pointed there. |
+| **M2.2 — DAG editor view** | ✅ done. Pure SVG canvas: nodes drawn from `Segment.x/y`, bezier edges with arrowheads, drag-to-move with debounced position persistence, drag-from-output-port with rubber-band path that snaps to a target node on drop, click-to-focus opens the segment editor in the right pane, "Set as start" pin, type-coloured node tabs. Inline edges-block editor on `menu`/`prompt`/`response` nodes (DTMF dropdown rows) for keyboard-only wiring. |
+| **M2.3 — Walk simulator** | ✅ done. `<dialog>` modal with a 12-key DTMF keypad + `timeout` / `invalid` chips. Auto-plays the current node's audio in the chosen language + rotation, follows the matching edge on press, shows breadcrumb history of visited nodes, halts on terminator or unmapped edge. |
+| **M2.4 — Telephony codecs** | deferred. ffmpeg pipeline already in place via pydub; revisit when an Asterisk/Twilio user asks. |
+| **M2.5 — Telephony platform packaging** | deferred. Pure templating; can be added later without touching the data model. |
 
 ## Context
 
@@ -349,7 +358,7 @@ In the DAG view, "▶ Walk" mode:
 
 **Exit criteria:** walk a 5-deep tree without leaving the editor.
 
-### M2.4 — Telephony output codecs  (~3 days)
+### M2.4 — Telephony output codecs  (deferred)
 
 Beyond MP3, add output adapters keyed off project setting:
 - `g711-ulaw` (`.wav` 8 kHz µ-law) — universal IVR
@@ -362,9 +371,10 @@ All via existing ffmpeg dep.
 Project setting: `output_codecs: list[str]` (default: `["mp3"]`). On regen, all listed
 codecs produced from the same source WAV.
 
-**Exit criteria:** generated G.711 file plays correctly through Asterisk / Twilio.
+**Status:** deferred. Revisit when a downstream Asterisk/Twilio consumer
+needs anything beyond MP3.
 
-### M2.5 — Telephony platform packaging  (~3 days)
+### M2.5 — Telephony platform packaging  (deferred)
 
 On project export, also produce:
 - `twilio.xml` — TwiML referencing relative URLs
@@ -374,7 +384,9 @@ On project export, also produce:
 Pure templating from the segment graph. No platform integration; user uploads the
 ZIP themselves.
 
-**Exit criteria:** Twilio sandbox accepts the export.
+**Status:** deferred. The data model already carries everything these
+exporters would need; we can add them as templates later without
+schema churn.
 
 ### M2.x — Distribution polish  (~1 day)
 

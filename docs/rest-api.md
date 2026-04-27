@@ -48,7 +48,7 @@ Lightweight liveness + onboarding-state probe. Polled by the bootstrap
 
 ### `GET /api/languages`
 
-The 11 supported language codes, in display order. English is first.
+The 23 supported language codes, in display order. English is first.
 
 **Response** `200`:
 ```json
@@ -92,7 +92,7 @@ Parler model card's per-language sets).
 
 ### `GET /api/domains`
 
-All registered domain packs (built-ins: `poll`, `announcement`).
+All registered domain packs (built-ins: `poll`, `announcement`, `ivr`).
 
 **Response** `200`:
 ```json
@@ -110,8 +110,34 @@ All registered domain packs (built-ins: `poll`, `announcement`).
       "option_template":   "If you think {body}, then press {n}."
     }
   },
-  {"name": "announcement", "...": "..."}
+  {"name": "announcement", "...": "..."},
+  {
+    "name": "ivr",
+    "label": "IVR menu",
+    "description": "Branching call flow: prompts, menus, responses, bridges, terminators.",
+    "segment_types": [
+      {"name": "prompt",     "label": "Prompt",     "addable": true, "deletable": true, "max": null, "template_field": null},
+      {"name": "menu",       "label": "Menu",       "addable": true, "deletable": true, "max": null, "template_field": null},
+      {"name": "response",   "label": "Response",   "addable": true, "deletable": true, "max": null, "template_field": null},
+      {"name": "bridge",     "label": "Bridge",     "addable": true, "deletable": true, "max": null, "template_field": null},
+      {"name": "terminator", "label": "Terminator", "addable": true, "deletable": true, "max": null, "template_field": null}
+    ],
+    "default_templates": {}
+  }
 ]
+```
+
+### `GET /api/ivr-keys`
+
+DTMF + special edge keys recognised by the IVR domain. Used by the DAG
+editor to populate the per-edge dropdown.
+
+**Response** `200`:
+```json
+{
+  "dtmf":    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "*", "#"],
+  "special": ["timeout", "invalid"]
+}
 ```
 
 ---
@@ -286,6 +312,7 @@ Full project state.
   "rotation_seed": null,
   "rotations": [],
   "lexicon": {"global": {"BJP": "bee jay pee"}, "hi": {"BJP": "बीजेपी"}},
+  "start_segment_id": "",
   "segments": [
     {
       "id": "seg_abc123",
@@ -294,7 +321,10 @@ Full project state.
       "use_template": true,
       "lock_at_end": false,
       "translations": {"hi": {"r0": "कौन जीतेगा?"}},
-      "current_takes": {"hi": {"r0": "att_x"}}
+      "current_takes": {"hi": {"r0": "att_x"}},
+      "edges": {},
+      "x": 0.0,
+      "y": 0.0
     }
   ]
 }
@@ -389,8 +419,15 @@ domain or unknown lang code.
 
 ## Segments
 
-Segment types depend on the project's domain (`poll`: `question`,
-`option`; `announcement`: `body`).
+Segment types depend on the project's domain:
+
+- `poll` → `question`, `option`
+- `announcement` → `body`
+- `ivr` → `prompt`, `menu`, `response`, `bridge`, `terminator`
+
+For IVR projects the `edges`, `x`, `y` fields on each segment carry the
+DAG topology (see [IVR DAG](#ivr-dag) below). Poll and announcement
+segments leave `edges` empty.
 
 ### `POST /api/projects/{pid}/segments`
 
@@ -517,6 +554,69 @@ unchanged.
 overrides + persists.
 
 **Response** `200`: full project.
+
+---
+
+## IVR DAG
+
+For `ivr`-domain projects, segments are nodes in a directed graph.
+Edges are stored on the source segment as `edges: {key: target_seg_id}`,
+where `key` is one of the DTMF digits (`0`–`9`, `*`, `#`) or a special
+key (`timeout`, `invalid`). `Project.start_segment_id` pins the call
+flow's entry point — empty string ("") means "first segment by
+declaration order".
+
+### `PATCH /api/projects/{pid}/segments/{sid}/edge`
+
+Set or clear one edge on a segment.
+
+**Body**:
+```json
+{
+  "key":    "1" | "*" | "timeout" | "invalid",
+  "target": "seg_xyz789" | null
+}
+```
+Send a `target` to wire the edge; send `null` to clear it.
+
+Validations:
+- `key` must be one of the DTMF or special keys (see
+  [`GET /api/ivr-keys`](#get-apiivr-keys)) → `400`.
+- `target` segment must exist in the same project → `404`.
+- Self-loops (`target == sid`) are rejected → `400`.
+
+**Response** `200`: `{"segment": {...}}`.
+
+### `PATCH /api/projects/{pid}/segments/{sid}/position`
+
+Persist a node's position on the DAG canvas. Called by the editor on
+drop after a drag-to-move.
+
+**Body**: `{"x": 320.0, "y": 240.0}`
+
+**Response** `200`: `{"segment": {...}}`.
+
+### `PATCH /api/projects/{pid}/start-segment`
+
+Pin (or unpin) the call flow's entry point.
+
+**Body**: `{"segment_id": "seg_abc123" | null}`
+
+`null` clears the pin — the engine then picks the first segment in
+declaration order. **`404`** if `segment_id` is unknown.
+
+**Response** `200`:
+```json
+{"start_segment_id": "seg_abc123"}
+```
+
+### Segment delete cascade
+
+`DELETE /api/projects/{pid}/segments/{sid}` for an IVR segment also:
+- removes any edges in **other** segments that pointed at `sid`, and
+- clears `start_segment_id` if it was set to `sid`.
+
+This is automatic — clients don't need to scrub references first.
 
 ---
 

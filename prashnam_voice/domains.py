@@ -195,5 +195,88 @@ ANNOUNCEMENT = DomainPack(
     validate=_validate_announcement,
 )
 
+
+# ---------------------------------------------------------------------------
+# IVR — branching menu trees (Tier 2)
+# ---------------------------------------------------------------------------
+
+
+def _validate_ivr(project) -> list[str]:
+    """Sanity checks for an IVR project."""
+    errs: list[str] = []
+    segs = list(project.segments)
+    if not segs:
+        errs.append("IVR projects need at least one segment")
+        return errs
+
+    ids = {s.id for s in segs}
+    # Edges that point at non-existent segments
+    for s in segs:
+        for key, target in (s.edges or {}).items():
+            if target not in ids:
+                errs.append(
+                    f"segment {s.id} edge {key!r} points at unknown segment {target!r}"
+                )
+
+    # Start segment, if pinned, must exist
+    if project.start_segment_id and project.start_segment_id not in ids:
+        errs.append(
+            f"start_segment_id {project.start_segment_id!r} is not a real segment"
+        )
+
+    # Menu segments should have at least one outgoing edge to be useful;
+    # warn (don't fail) when not — sometimes you're mid-edit.
+    for s in segs:
+        if s.type == "menu" and not s.edges:
+            errs.append(
+                f"menu segment {s.id} has no outgoing edges yet — "
+                "callers will hit a dead end"
+            )
+
+    return errs
+
+
+IVR = DomainPack(
+    name="ivr",
+    label="IVR menu",
+    description=(
+        "Interactive Voice Response menu — a graph of prompts, branching "
+        "menus, responses, and terminators connected by DTMF edges."
+    ),
+    segment_types=[
+        SegmentTypeSpec(
+            name="prompt", label="Prompt",
+            addable=True, deletable=True,
+            template_field=None,
+        ),
+        SegmentTypeSpec(
+            name="menu", label="Menu",
+            addable=True, deletable=True,
+            template_field=None,
+        ),
+        SegmentTypeSpec(
+            name="response", label="Response",
+            addable=True, deletable=True,
+            template_field=None,
+        ),
+        SegmentTypeSpec(
+            name="bridge", label="Bridge",
+            addable=True, deletable=True,
+            template_field=None,
+        ),
+        SegmentTypeSpec(
+            name="terminator", label="Terminator",
+            addable=True, deletable=True,
+            template_field=None,
+        ),
+    ],
+    default_templates={
+        "question_template": "",
+        "option_template": "",
+    },
+    validate=_validate_ivr,
+)
+
 register(POLL)
 register(ANNOUNCEMENT)
+register(IVR)

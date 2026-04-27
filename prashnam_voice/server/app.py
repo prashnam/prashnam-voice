@@ -39,7 +39,13 @@ from ..pipeline import (
     synthesize_segment_lang,
     translate_segments,
 )
-from ..projects import CANONICAL_ROTATION, ProjectStore
+from ..projects import (
+    ALL_EDGE_KEYS,
+    CANONICAL_ROTATION,
+    DTMF_KEYS,
+    ProjectStore,
+    SPECIAL_EDGE_KEYS,
+)
 
 log = logging.getLogger(__name__)
 
@@ -127,6 +133,22 @@ class EditSegmentOverrideRequest(BaseModel):
     lang: str
     voice: str | None = None
     pace:  str | None = None
+
+
+class SetSegmentEdgeRequest(BaseModel):
+    """One DTMF/control edge from a menu segment. `target=null` clears it."""
+    key: str                              # one of ALL_EDGE_KEYS
+    target: str | None
+
+
+class SetSegmentPositionRequest(BaseModel):
+    x: float
+    y: float
+
+
+class SetStartSegmentRequest(BaseModel):
+    """`segment_id=null` clears the pin; the resolver auto-picks a prompt."""
+    segment_id: str | None = None
 
 
 class RegenerateRequest(BaseModel):
@@ -528,6 +550,42 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         return {"segment": seg.to_json()}
+
+    @api.get("/api/ivr-keys")
+    def ivr_keys() -> dict:
+        """Recognised DTMF + control keys for IVR edges. UI uses this so
+        new keys added server-side surface automatically."""
+        return {"dtmf": list(DTMF_KEYS), "special": list(SPECIAL_EDGE_KEYS)}
+
+    @api.patch("/api/projects/{pid}/segments/{seg_id}/edge")
+    def edit_segment_edge(
+        pid: str, seg_id: str, req: SetSegmentEdgeRequest,
+    ) -> dict:
+        try:
+            seg = store.set_segment_edge(pid, seg_id, req.key, req.target)
+        except (FileNotFoundError, KeyError):
+            raise HTTPException(404, "project, segment, or target not found")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        return {"segment": seg.to_json(), "project": _project_payload(pid, store)}
+
+    @api.patch("/api/projects/{pid}/segments/{seg_id}/position")
+    def edit_segment_position(
+        pid: str, seg_id: str, req: SetSegmentPositionRequest,
+    ) -> dict:
+        try:
+            seg = store.set_segment_position(pid, seg_id, req.x, req.y)
+        except (FileNotFoundError, KeyError):
+            raise HTTPException(404, "project or segment not found")
+        return {"segment": seg.to_json()}
+
+    @api.patch("/api/projects/{pid}/start-segment")
+    def edit_start_segment(pid: str, req: SetStartSegmentRequest) -> dict:
+        try:
+            store.set_start_segment(pid, req.segment_id)
+        except (FileNotFoundError, KeyError):
+            raise HTTPException(404, "project or segment not found")
+        return _project_payload(pid, store)
 
     @api.patch("/api/projects/{pid}/segments/{seg_id}/template")
     def edit_segment_template(

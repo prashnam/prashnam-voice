@@ -460,6 +460,207 @@ details.settings > summary {
 
 .add-bar { padding: 12px 0; }
 
+/* ---------- IVR DAG canvas ---------- */
+
+.dag-pane {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.dag-pane-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--row);
+}
+.dag-pane-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.dag-canvas-wrap {
+  position: relative;
+  height: 460px;
+  background:
+    radial-gradient(circle, var(--line) 1px, transparent 1px) 0 0 / 24px 24px,
+    var(--bg);
+  overflow: auto;
+}
+.dag-canvas {
+  display: block;
+  width: 1600px;
+  height: 1200px;
+}
+
+/* Nodes are <g class="dag-node"> with internal rect + text + ports. */
+.dag-node { cursor: grab; }
+.dag-node.dragging { cursor: grabbing; }
+.dag-node .dag-card {
+  fill: var(--card);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  rx: 8; ry: 8;
+}
+.dag-node.selected .dag-card { stroke: var(--accent); stroke-width: 2; }
+.dag-node.start .dag-card { stroke: var(--brand); stroke-width: 2; }
+.dag-node[data-type="prompt"] .dag-card-tab { fill: var(--accent-soft); }
+.dag-node[data-type="menu"] .dag-card-tab { fill: var(--brand-soft); }
+.dag-node[data-type="response"] .dag-card-tab { fill: var(--good-bg); }
+.dag-node[data-type="bridge"] .dag-card-tab { fill: var(--row); }
+.dag-node[data-type="terminator"] .dag-card-tab { fill: var(--bad-bg); }
+.dag-node .dag-tab-label { font-size: 10px; font-weight: 700; fill: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; }
+.dag-node .dag-title { font-size: 12px; font-weight: 600; fill: var(--ink); }
+.dag-node .dag-snippet { font-size: 11px; fill: var(--muted); }
+
+/* Edge handles: small circles on right edge of menu nodes, one per DTMF key. */
+.dag-port {
+  fill: var(--card);
+  stroke: var(--ink-2);
+  stroke-width: 1.2;
+  cursor: crosshair;
+}
+.dag-port:hover { fill: var(--accent); stroke: var(--accent); }
+.dag-port-label { font-size: 10px; font-weight: 700; fill: var(--ink-2); pointer-events: none; }
+.dag-port.connected { fill: var(--accent); stroke: var(--accent); }
+.dag-port.connected + .dag-port-label { fill: var(--accent); }
+
+/* Edges */
+.dag-edge {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  marker-end: url(#arrowhead);
+}
+.dag-edge.special { stroke: var(--warn); stroke-dasharray: 4 3; }
+.dag-edge:hover { stroke-width: 2.6; }
+.dag-edge-label {
+  font-size: 11px; font-weight: 700;
+  fill: var(--accent);
+  paint-order: stroke; stroke: var(--bg); stroke-width: 3;
+  pointer-events: none;
+}
+.dag-edge-label.special { fill: var(--warn); }
+
+.dag-rubber {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 1.6;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+/* ---------- Inline edges editor (on menu segments in the list view) ---------- */
+
+.edges-block {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.edges-block h4 {
+  margin: 0 0 6px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ink-2);
+}
+.edges-block .edges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 12px;
+}
+.edges-block .edge-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px;
+}
+.edges-block .edge-key {
+  min-width: 38px;
+  text-align: center;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-weight: 700;
+  background: var(--row);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--ink-2);
+}
+.edges-block .edge-row select {
+  flex: 1; padding: 2px 4px; font-size: 12px;
+  min-width: 100px;
+}
+.edges-block .edge-row.set .edge-key { background: var(--accent-soft); color: var(--accent); }
+
+/* Tag pill on segment cards in the list view, showing IVR type colour-coded. */
+.seg-head .badge[data-ivr="prompt"]     { background: var(--accent-soft); color: var(--accent); }
+.seg-head .badge[data-ivr="menu"]       { background: var(--brand-soft); color: var(--brand); }
+.seg-head .badge[data-ivr="response"]   { background: var(--good-bg); color: var(--good); }
+.seg-head .badge[data-ivr="bridge"]     { background: var(--row); color: var(--ink-2); }
+.seg-head .badge[data-ivr="terminator"] { background: var(--bad-bg); color: var(--danger); }
+
+/* ---------- Walk simulator ---------- */
+
+.walk-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.walk-head h2 { margin: 0; font-size: 16px; }
+.walk-row {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 0; font-size: 13px;
+}
+.walk-row select { width: auto; min-width: 120px; padding: 4px 6px; font-size: 13px; }
+.walk-current {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 8px 0;
+}
+.walk-current strong { font-size: 16px; color: var(--ink); }
+.walk-current p { margin: 6px 0; font-size: 13px; }
+.walk-current audio { width: 100%; height: 32px; margin: 6px 0; }
+.walk-tag {
+  display: inline-block;
+  font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  margin-right: 6px;
+  background: var(--card); color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.walk-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  max-width: 260px;
+  margin: 12px 0;
+}
+.walk-keypad button {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 18px; font-weight: 700;
+  padding: 14px 0;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.walk-keypad button:hover { background: var(--row); border-color: var(--accent); color: var(--accent); }
+.walk-keypad button.unwired { color: var(--muted); }
+.walk-keypad button.special {
+  grid-column: span 1;
+  font-family: inherit;
+  font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.walk-history {
+  list-style: none;
+  margin: 4px 0 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  font-size: 11px;
+}
+.walk-history li {
+  background: var(--row);
+  padding: 2px 8px; border-radius: 999px;
+  color: var(--ink-2);
+}
+.walk-history li.current { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
 .muted.small, .small { font-size: 12px; }
 
 /* ---------- Modal dialog ---------- */

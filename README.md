@@ -1,7 +1,13 @@
 # prashnam-voice
 
-Local English → Indian-language voice poll generator for [prashnam.ai](https://prashnam.ai).
-Type a poll question and options in English, pick languages, get an MP3 per item per language. Fully offline after first-run model download. No API keys.
+Local English → Indian-language voice generator for [prashnam.ai](https://prashnam.ai).
+Type your content in English, pick languages, get an MP3 per item per language. Fully offline after first-run model download. No API keys.
+
+Three project shapes ship in the box:
+
+- **Poll** — 1 question + N options, optional NOTA-locked rotations.
+- **Announcement** — N free-form body segments.
+- **IVR** — branching call flow: `prompt` / `menu` / `response` / `bridge` / `terminator` segments wired by DTMF edges, with a visual DAG editor and a walk simulator for end-to-end dry runs.
 
 ## Languages
 
@@ -23,7 +29,7 @@ adapter (Sarvam) exposes 35 v3 voices that work cross-language.
 |---|---|
 | Translation | [`ai4bharat/indictrans2-en-indic-dist-200M`](https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M) |
 | TTS | [`ai4bharat/indic-parler-tts`](https://huggingface.co/ai4bharat/indic-parler-tts) |
-| Languages | hi, ta, te, bn, mr, kn, gu, pa, ml, or |
+| Languages | en + 22 Indic (see above) |
 
 ## Install
 

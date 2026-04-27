@@ -28,6 +28,7 @@ const state = {
   paces: [],
   defaultPace: "moderate",
   voicesByLang: {},   // {lang_code: [voice_id, ...]} — from active TTS adapter
+  ivrKeys: { dtmf: ["1","2","3","4","5","6","7","8","9","0","*","#"], special: ["timeout","invalid"] },
   domains: [],        // [{name, label, description, segment_types, default_templates}]
   currentProject: null,
   // per-segment edit tracking
@@ -107,6 +108,10 @@ const Api = {
   setOverride:    (pid, sid, body) => api("PATCH", `/api/projects/${pid}/segments/${sid}/override`, body),
   voices:         ()              => api("GET",   "/api/voices"),
   setLockAtEnd: (pid, sid, lock)   => api("PATCH", `/api/projects/${pid}/segments/${sid}/lock`, { lock_at_end: lock }),
+  setEdge:      (pid, sid, k, t)   => api("PATCH", `/api/projects/${pid}/segments/${sid}/edge`, { key: k, target: t }),
+  setPosition:  (pid, sid, x, y)   => api("PATCH", `/api/projects/${pid}/segments/${sid}/position`, { x, y }),
+  setStartSegment: (pid, sid)      => api("PATCH", `/api/projects/${pid}/start-segment`, { segment_id: sid }),
+  ivrKeys:      ()                 => api("GET",   "/api/ivr-keys"),
   enableRotations: (pid, body)     => api("POST",  `/api/projects/${pid}/rotations/enable`, body),
   disableRotations:(pid)           => api("POST",  `/api/projects/${pid}/rotations/disable`),
   reshuffle:    (pid, seed)        => api("POST",  `/api/projects/${pid}/rotations/reshuffle`, { seed: seed ?? null }),
@@ -390,9 +395,11 @@ async function renderProject(pid) {
 
   renderSettings(proj);
   renderSegments(proj);
+  renderDag(proj);
 
   // If the project has no segments yet, auto-create the domain's seed
-  // segment (question for polls, body for announcements).
+  // segment (question for polls, body for announcements). For IVR,
+  // start with a prompt — users add menus / responses afterward.
   if (proj.segments.length === 0) {
     await Api.addSegment(proj.id, autoSeedSegmentType(proj.domain), "");
     await reloadProject();
@@ -404,6 +411,7 @@ async function reloadProject() {
   const proj = await Api.getProject(state.currentProject.id);
   state.currentProject = proj;
   renderSegments(proj);
+  renderDag(proj);
   $("#proj-meta").textContent =
     `${proj.langs.length} languages · default pace ${PACE_LABELS[proj.default_pace] || proj.default_pace}`;
   return proj;
@@ -643,8 +651,73 @@ function buildSegmentCard(proj, seg, idx) {
   for (const code of proj.langs) {
     grid.appendChild(buildLangCell(proj, seg, code));
   }
+
+  // Inline edges editor for IVR menu segments — keyboard-friendly fallback
+  // to the DAG canvas. Each row is "<key>  →  [select target segment]".
+  // Visible only on segments where outgoing edges make sense.
+  if (proj.domain === "ivr" && _segmentCanHaveEdges(seg)) {
+    card.appendChild(buildEdgesEditor(proj, seg));
+  }
+
+  // Stamp the type onto the badge so CSS can colour-code IVR segments.
+  if (proj.domain === "ivr") badge.dataset.ivr = seg.type;
+
   setSegStatus(card, "");
   return card;
+}
+
+function _segmentCanHaveEdges(seg) {
+  // Terminators end the call — no outgoing edges; bridges typically just
+  // forward and aren't edited here.
+  return seg.type === "menu" || seg.type === "prompt" || seg.type === "response";
+}
+
+function buildEdgesEditor(proj, seg) {
+  const block = document.createElement("div");
+  block.className = "edges-block";
+  const title = seg.type === "menu" ? "DTMF edges" : "Next-on edges";
+  block.innerHTML = `<h4>${title}</h4><div class="edges-grid"></div>`;
+  const grid = block.querySelector(".edges-grid");
+  // Menu segments offer the full DTMF + special set; prompt/response just
+  // need a "next" edge — for v1 we surface the digits on prompt too in
+  // case the prompt also handles DTMF.
+  const keys = seg.type === "menu"
+    ? [...state.ivrKeys.dtmf, ...state.ivrKeys.special]
+    : [...state.ivrKeys.dtmf, ...state.ivrKeys.special];
+  for (const key of keys) {
+    const row = document.createElement("div");
+    row.className = "edge-row";
+    if ((seg.edges || {})[key]) row.classList.add("set");
+    const sel = document.createElement("select");
+    sel.dataset.key = key;
+    sel.innerHTML = `<option value="">— unwired —</option>` +
+      proj.segments
+        .filter((s) => s.id !== seg.id)
+        .map((s) => {
+          const label = s.english.trim().slice(0, 38) || `(${s.type})`;
+          const selected = (seg.edges || {})[key] === s.id ? " selected" : "";
+          return `<option value="${s.id}"${selected}>${escapeHtml(label)} · ${s.type}</option>`;
+        }).join("");
+    sel.addEventListener("change", async () => {
+      try {
+        await Api.setEdge(proj.id, seg.id, key, sel.value || null);
+        toast(sel.value ? `Edge ${key} set` : `Edge ${key} cleared`, "ok", 1400);
+        await reloadProject();
+      } catch (e) {
+        toast("Edge save failed: " + e.message, "error");
+      }
+    });
+    row.innerHTML = `<span class="edge-key">${key}</span>`;
+    row.appendChild(sel);
+    grid.appendChild(row);
+  }
+  return block;
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[c]);
 }
 
 function buildLangCell(proj, seg, lang) {
@@ -1650,19 +1723,511 @@ function formatTime(iso) {
 }
 
 // --------------------------------------------------------------------------
+// IVR DAG canvas
+// --------------------------------------------------------------------------
+//
+// Pure SVG. Each segment is a `<g class="dag-node">` containing a card
+// rect, header tab, title, and one output port per edge key (menu types
+// only). Edges are bezier paths between source-port and target-node-left.
+//
+// Three drag interactions:
+//   1. Drag a node body → moves it. Persists `x/y` on mouseup.
+//   2. Mousedown a port → rubber-band path follows cursor; mouseup over a
+//      target node creates an edge for that port's key.
+//   3. Click a node → flashes/scrolls to its segment card in the list view
+//      (so the user can edit content).
+
+const NODE_W = 200;
+const NODE_H = 90;
+const TAB_H = 22;
+const PORT_R = 6;
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+const dagState = {
+  drag: null,         // { sid, dx, dy } when dragging a node
+  connect: null,      // { fromSid, key, fromX, fromY } when wiring an edge
+};
+
+function renderDag(proj) {
+  const pane = $("#dag-pane");
+  if (!pane) return;
+  if (proj.domain !== "ivr") {
+    pane.hidden = true;
+    return;
+  }
+  pane.hidden = false;
+
+  // Bind toolbar (idempotent — replaceWith clones strip listeners).
+  $("#dag-add-btn").onclick = onDagAddNode.bind(null, proj.id);
+  $("#dag-walk-btn").onclick = openWalkSimulator;
+
+  layoutSegmentsIfNeeded(proj);
+  drawDag(proj);
+}
+
+function layoutSegmentsIfNeeded(proj) {
+  // Projects loaded for the first time have x/y == 0 on every segment.
+  // Cascade them on a grid so they're at least visible. Persist a
+  // batch-update if anything changed. (No-op once positions are saved.)
+  const needs = proj.segments.filter((s) => s.x === 0 && s.y === 0);
+  if (needs.length < proj.segments.length) return;     // already laid out
+  if (needs.length === 0) return;
+  const cols = 3;
+  const padX = 60, padY = 40;
+  needs.forEach((s, i) => {
+    s.x = padX + (i % cols) * (NODE_W + 60);
+    s.y = padY + Math.floor(i / cols) * (NODE_H + 50);
+  });
+  // Fire and forget — store positions server-side so they survive reloads.
+  for (const s of needs) {
+    Api.setPosition(proj.id, s.id, s.x, s.y).catch(() => {});
+  }
+}
+
+function drawDag(proj) {
+  const svg = $("#dag-canvas");
+  const nodesG = $("#dag-nodes");
+  const edgesG = $("#dag-edges");
+  if (!svg || !nodesG || !edgesG) return;
+  nodesG.innerHTML = "";
+  edgesG.innerHTML = "";
+
+  const startId = (proj.start_segment_id || (proj.segments.find((s) => s.type === "prompt") || proj.segments[0] || {}).id);
+
+  // Edges first so nodes paint on top.
+  for (const seg of proj.segments) {
+    const sourcePorts = portPositionsFor(seg);
+    for (const [key, target] of Object.entries(seg.edges || {})) {
+      const targetSeg = proj.segments.find((s) => s.id === target);
+      if (!targetSeg) continue;
+      const src = sourcePorts[key] || { x: seg.x + NODE_W, y: seg.y + NODE_H / 2 };
+      const dst = { x: targetSeg.x, y: targetSeg.y + NODE_H / 2 };
+      edgesG.appendChild(buildEdgePath(src, dst, key));
+    }
+  }
+
+  for (const seg of proj.segments) {
+    nodesG.appendChild(buildNode(seg, seg.id === startId));
+  }
+
+  // Wire mousemove + mouseup at the SVG level once.
+  if (!svg.dataset.bound) {
+    svg.addEventListener("mousemove", onDagMouseMove);
+    svg.addEventListener("mouseup",   onDagMouseUp);
+    svg.addEventListener("mouseleave",onDagMouseUp);
+    svg.dataset.bound = "1";
+  }
+}
+
+function portKeysFor(seg) {
+  if (seg.type === "menu") {
+    return [...state.ivrKeys.dtmf, ...state.ivrKeys.special];
+  }
+  if (seg.type === "prompt" || seg.type === "response" || seg.type === "bridge") {
+    // One "next" port keyed on "1" by convention so the user can wire
+    // a default forward path. Plus the special keys for completeness.
+    return ["1", ...state.ivrKeys.special];
+  }
+  return [];
+}
+
+function portPositionsFor(seg) {
+  const out = {};
+  const keys = portKeysFor(seg);
+  if (!keys.length) return out;
+  // Spread ports along the right edge of the card.
+  const top = seg.y + TAB_H + 8;
+  const bottom = seg.y + NODE_H - 8;
+  const span = Math.max(0, bottom - top);
+  keys.forEach((k, i) => {
+    const t = keys.length === 1 ? 0.5 : i / (keys.length - 1);
+    out[k] = { x: seg.x + NODE_W, y: top + t * span };
+  });
+  return out;
+}
+
+function buildNode(seg, isStart) {
+  const g = document.createElementNS(SVG_NS, "g");
+  g.classList.add("dag-node");
+  if (isStart) g.classList.add("start");
+  g.dataset.sid = seg.id;
+  g.dataset.type = seg.type;
+  g.setAttribute("transform", `translate(${seg.x}, ${seg.y})`);
+
+  const rect = document.createElementNS(SVG_NS, "rect");
+  rect.setAttribute("class", "dag-card");
+  rect.setAttribute("width", NODE_W);
+  rect.setAttribute("height", NODE_H);
+  g.appendChild(rect);
+
+  const tab = document.createElementNS(SVG_NS, "rect");
+  tab.setAttribute("class", "dag-card-tab");
+  tab.setAttribute("width", NODE_W);
+  tab.setAttribute("height", TAB_H);
+  tab.setAttribute("rx", 8); tab.setAttribute("ry", 8);
+  g.appendChild(tab);
+  // Square off the bottom of the tab — overlay a strip with no rounding.
+  const tabClip = document.createElementNS(SVG_NS, "rect");
+  tabClip.setAttribute("class", "dag-card-tab");
+  tabClip.setAttribute("y", TAB_H - 8);
+  tabClip.setAttribute("width", NODE_W);
+  tabClip.setAttribute("height", 8);
+  g.appendChild(tabClip);
+
+  const tabText = document.createElementNS(SVG_NS, "text");
+  tabText.setAttribute("class", "dag-tab-label");
+  tabText.setAttribute("x", 10);
+  tabText.setAttribute("y", 14);
+  tabText.textContent = (isStart ? "★ " : "") + seg.type;
+  g.appendChild(tabText);
+
+  const title = document.createElementNS(SVG_NS, "text");
+  title.setAttribute("class", "dag-title");
+  title.setAttribute("x", 10);
+  title.setAttribute("y", TAB_H + 22);
+  title.textContent = (seg.english.trim().slice(0, 28)) || `(${seg.type})`;
+  g.appendChild(title);
+
+  const snippet = document.createElementNS(SVG_NS, "text");
+  snippet.setAttribute("class", "dag-snippet");
+  snippet.setAttribute("x", 10);
+  snippet.setAttribute("y", TAB_H + 40);
+  const tail = seg.english.trim().slice(28, 64);
+  snippet.textContent = tail || "";
+  g.appendChild(snippet);
+
+  // Ports on the right edge.
+  const positions = portPositionsFor(seg);
+  Object.entries(positions).forEach(([key, pos]) => {
+    const cx = pos.x - seg.x;
+    const cy = pos.y - seg.y;
+    const port = document.createElementNS(SVG_NS, "circle");
+    port.setAttribute("class", "dag-port" + ((seg.edges || {})[key] ? " connected" : ""));
+    port.setAttribute("cx", cx);
+    port.setAttribute("cy", cy);
+    port.setAttribute("r", PORT_R);
+    port.dataset.key = key;
+    port.addEventListener("mousedown", (ev) => onPortMouseDown(ev, seg, key));
+    g.appendChild(port);
+
+    const lab = document.createElementNS(SVG_NS, "text");
+    lab.setAttribute("class", "dag-port-label");
+    lab.setAttribute("x", cx + 9);
+    lab.setAttribute("y", cy + 3);
+    lab.textContent = key;
+    g.appendChild(lab);
+  });
+
+  // Drag-to-move on the card body (not the ports).
+  rect.addEventListener("mousedown", (ev) => onNodeMouseDown(ev, seg));
+  tab.addEventListener("mousedown",  (ev) => onNodeMouseDown(ev, seg));
+  // Click to focus the matching segment card in the list below.
+  g.addEventListener("dblclick", () => {
+    state.pendingScrollSegmentId = seg.id;
+    flushPendingScroll();
+  });
+  return g;
+}
+
+function buildEdgePath(src, dst, key) {
+  const p = document.createElementNS(SVG_NS, "path");
+  const isSpecial = state.ivrKeys.special.includes(key);
+  p.setAttribute("class", "dag-edge" + (isSpecial ? " special" : ""));
+  p.setAttribute("d", bezier(src, dst));
+  const g = document.createElementNS(SVG_NS, "g");
+  g.appendChild(p);
+  // Label on midpoint.
+  const mid = { x: (src.x + dst.x) / 2, y: (src.y + dst.y) / 2 - 4 };
+  const lab = document.createElementNS(SVG_NS, "text");
+  lab.setAttribute("class", "dag-edge-label" + (isSpecial ? " special" : ""));
+  lab.setAttribute("x", mid.x);
+  lab.setAttribute("y", mid.y);
+  lab.setAttribute("text-anchor", "middle");
+  lab.textContent = key;
+  g.appendChild(lab);
+  return g;
+}
+
+function bezier(src, dst) {
+  // Horizontal bezier: source goes right, destination comes from the left.
+  const dx = Math.max(40, Math.abs(dst.x - src.x) * 0.5);
+  return `M ${src.x} ${src.y} C ${src.x + dx} ${src.y}, ${dst.x - dx} ${dst.y}, ${dst.x} ${dst.y}`;
+}
+
+// --------------------------------------------------------------------------
+// DAG drag interactions
+// --------------------------------------------------------------------------
+
+function _svgPoint(ev) {
+  const svg = $("#dag-canvas");
+  const r = svg.getBoundingClientRect();
+  // SVG viewBox = native pixel space (we set width/height in px). r maps
+  // 1:1, accounting for scroll on the wrapper.
+  const wrap = svg.parentElement;
+  return {
+    x: ev.clientX - r.left + wrap.scrollLeft,
+    y: ev.clientY - r.top  + wrap.scrollTop,
+  };
+}
+
+function onNodeMouseDown(ev, seg) {
+  if (ev.button !== 0) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const pt = _svgPoint(ev);
+  dagState.drag = { sid: seg.id, dx: pt.x - seg.x, dy: pt.y - seg.y };
+  const g = ev.currentTarget.closest(".dag-node");
+  if (g) g.classList.add("dragging");
+}
+
+function onPortMouseDown(ev, seg, key) {
+  if (ev.button !== 0) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const pos = portPositionsFor(seg)[key];
+  dagState.connect = { fromSid: seg.id, key, fromX: pos.x, fromY: pos.y };
+  const rubber = $("#dag-rubber");
+  rubber.hidden = false;
+  rubber.setAttribute("d", bezier({ x: pos.x, y: pos.y }, { x: pos.x + 1, y: pos.y }));
+}
+
+function onDagMouseMove(ev) {
+  if (dagState.drag) {
+    const proj = state.currentProject;
+    const seg = proj?.segments.find((s) => s.id === dagState.drag.sid);
+    if (!seg) return;
+    const pt = _svgPoint(ev);
+    seg.x = Math.max(0, pt.x - dagState.drag.dx);
+    seg.y = Math.max(0, pt.y - dagState.drag.dy);
+    drawDag(proj);
+  }
+  if (dagState.connect) {
+    const pt = _svgPoint(ev);
+    const rubber = $("#dag-rubber");
+    rubber.setAttribute("d", bezier(
+      { x: dagState.connect.fromX, y: dagState.connect.fromY },
+      { x: pt.x, y: pt.y },
+    ));
+  }
+}
+
+async function onDagMouseUp(ev) {
+  // Finishing a node-drag → persist the position.
+  if (dagState.drag) {
+    const proj = state.currentProject;
+    const seg = proj?.segments.find((s) => s.id === dagState.drag.sid);
+    document.querySelectorAll(".dag-node.dragging").forEach((g) => g.classList.remove("dragging"));
+    if (seg) {
+      try { await Api.setPosition(proj.id, seg.id, seg.x, seg.y); }
+      catch {}
+    }
+    dagState.drag = null;
+  }
+
+  // Finishing a port-drag → did we land on a node?
+  if (dagState.connect) {
+    const rubber = $("#dag-rubber");
+    rubber.hidden = true;
+    const target = ev.target.closest(".dag-node");
+    const proj = state.currentProject;
+    if (target && proj) {
+      const targetSid = target.dataset.sid;
+      const { fromSid, key } = dagState.connect;
+      if (targetSid !== fromSid) {
+        try {
+          await Api.setEdge(proj.id, fromSid, key, targetSid);
+          toast(`Wired ${key} → ${target.querySelector(".dag-title")?.textContent || targetSid}`, "ok", 1600);
+          await reloadProject();
+        } catch (e) {
+          toast("Couldn't wire edge: " + e.message, "error");
+        }
+      }
+    }
+    dagState.connect = null;
+  }
+}
+
+async function onDagAddNode(pid) {
+  const sel = $("#dag-add-type");
+  const type = sel.value || "prompt";
+  try {
+    const r = await Api.addSegment(pid, type, "");
+    // Scatter near the centre.
+    await Api.setPosition(pid, r.segment_id, 80 + Math.random() * 80, 80 + Math.random() * 80);
+    await reloadProject();
+  } catch (e) {
+    toast("Add failed: " + e.message, "error");
+  }
+}
+
+// --------------------------------------------------------------------------
+// Walk simulator
+// --------------------------------------------------------------------------
+
+const walkState = {
+  current: null,    // segment id
+  history: [],      // [seg_id, ...] in visit order
+  lang: "en",
+  rotationId: "r0",
+};
+
+function openWalkSimulator() {
+  const proj = state.currentProject;
+  if (!proj) return;
+  const dlg = $("#walk-dialog");
+  if (!dlg) return;
+
+  // Populate language + rotation selects.
+  const langSel = $("#walk-lang");
+  langSel.innerHTML = proj.langs.map((c) => {
+    const meta = state.langs.find((l) => l.code === c) || { name: c };
+    return `<option value="${c}">${escapeHtml(meta.name)}</option>`;
+  }).join("");
+  langSel.value = proj.langs.includes("en") ? "en" : proj.langs[0];
+
+  const rotSel = $("#walk-rotation");
+  const rids = proj.rotation_count > 1
+    ? Array.from({ length: proj.rotation_count }, (_, i) => `r${i}`)
+    : ["r0"];
+  rotSel.innerHTML = rids.map((r) => `<option value="${r}">${rotationLabel(r)}</option>`).join("");
+  rotSel.value = "r0";
+
+  walkState.lang = langSel.value;
+  walkState.rotationId = rotSel.value;
+
+  // Resolve start.
+  const start = proj.start_segment_id ||
+    (proj.segments.find((s) => s.type === "prompt") || proj.segments[0] || {}).id;
+  walkState.current = start || null;
+  walkState.history = start ? [start] : [];
+
+  bindWalkOnce();
+  drawWalk();
+  dlg.showModal();
+}
+
+let _walkBound = false;
+function bindWalkOnce() {
+  if (_walkBound) return;
+  _walkBound = true;
+  $("#walk-close").addEventListener("click", () => $("#walk-dialog").close());
+  $("#walk-close-2").addEventListener("click", () => $("#walk-dialog").close());
+  $("#walk-reset").addEventListener("click", () => {
+    const proj = state.currentProject;
+    const start = proj?.start_segment_id ||
+      (proj?.segments.find((s) => s.type === "prompt") || proj?.segments[0] || {}).id;
+    walkState.current = start || null;
+    walkState.history = start ? [start] : [];
+    drawWalk();
+  });
+  $("#walk-lang").addEventListener("change", (ev) => {
+    walkState.lang = ev.target.value;
+    drawWalk();
+  });
+  $("#walk-rotation").addEventListener("change", (ev) => {
+    walkState.rotationId = ev.target.value;
+    drawWalk();
+  });
+}
+
+function drawWalk() {
+  const proj = state.currentProject;
+  if (!proj) return;
+  const seg = proj.segments.find((s) => s.id === walkState.current);
+  const tag = $("#walk-tag");
+  const title = $("#walk-title");
+  const text = $("#walk-text");
+  const audio = $("#walk-audio");
+  const hint = $("#walk-hint");
+  const keypad = $("#walk-keypad");
+  const trail = $("#walk-history");
+
+  if (!seg) {
+    tag.textContent = "—";
+    title.textContent = "(no start segment)";
+    text.textContent = "Add at least one segment, then set it as the start.";
+    audio.removeAttribute("src");
+    keypad.innerHTML = "";
+    trail.innerHTML = "";
+    hint.textContent = "";
+    return;
+  }
+
+  tag.textContent = seg.type.toUpperCase();
+  title.textContent = (seg.english.trim() || `(${seg.type})`);
+  const tr = (seg.translations[walkState.lang] || {})[walkState.rotationId] || "";
+  text.textContent = tr || "(no translation yet — regenerate this segment to hear it)";
+  const att = (seg.current_takes[walkState.lang] || {})[walkState.rotationId];
+  if (att) {
+    audio.src = audioUrl(proj.id, seg.id, walkState.lang, att, walkState.rotationId);
+    audio.play().catch(() => {});
+    hint.textContent = "Auto-playing. Press a DTMF key to follow that edge.";
+  } else {
+    audio.removeAttribute("src");
+    hint.textContent = "(audio not generated yet — regenerate this segment.)";
+  }
+
+  // Keypad: 1-9, *, 0, # plus special keys.
+  keypad.innerHTML = "";
+  const layout = ["1","2","3","4","5","6","7","8","9","*","0","#"];
+  for (const k of layout) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = k;
+    const wired = !!(seg.edges || {})[k];
+    if (!wired) b.classList.add("unwired");
+    b.addEventListener("click", () => walkPress(k));
+    keypad.appendChild(b);
+  }
+  for (const k of state.ivrKeys.special) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "special";
+    b.textContent = k;
+    if (!(seg.edges || {})[k]) b.classList.add("unwired");
+    b.addEventListener("click", () => walkPress(k));
+    keypad.appendChild(b);
+  }
+
+  // History breadcrumb.
+  trail.innerHTML = walkState.history.map((sid, i) => {
+    const s = proj.segments.find((x) => x.id === sid);
+    const label = s ? (s.english.trim().slice(0, 24) || s.type) : sid;
+    const isCurrent = i === walkState.history.length - 1;
+    return `<li class="${isCurrent ? "current" : ""}">${escapeHtml(label)}</li>`;
+  }).join("");
+}
+
+function walkPress(key) {
+  const proj = state.currentProject;
+  const seg = proj?.segments.find((s) => s.id === walkState.current);
+  if (!seg) return;
+  const next = (seg.edges || {})[key];
+  if (!next) {
+    toast(`No edge wired for ${key}`, "warn", 1600);
+    return;
+  }
+  walkState.current = next;
+  walkState.history.push(next);
+  drawWalk();
+}
+
+
+// --------------------------------------------------------------------------
 // Bootstrap
 // --------------------------------------------------------------------------
 
 (async () => {
   try {
-    const [langs, paces, domains, voices] = await Promise.all([
-      Api.langs(), Api.paces(), Api.domains(), Api.voices(),
+    const [langs, paces, domains, voices, ivrKeys] = await Promise.all([
+      Api.langs(), Api.paces(), Api.domains(), Api.voices(), Api.ivrKeys().catch(() => null),
     ]);
     state.langs = langs;
     state.paces = paces.options;
     state.defaultPace = paces.default;
     state.domains = domains;
     state.voicesByLang = voices;
+    if (ivrKeys) state.ivrKeys = ivrKeys;
   } catch (e) {
     document.getElementById("app").innerHTML =
       `<section class="container"><p>Failed to reach the API: ${e.message}</p></section>`;
