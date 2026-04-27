@@ -172,7 +172,13 @@
       <p>
         Once Python is installed, the next step is one file: <code>install.py</code>.
         It creates a virtual environment, installs dependencies, and starts the
-        local server. Re-running it just updates and restarts.
+        local server.
+      </p>
+      <p class="muted small">
+        <strong>Daily launch:</strong> just run <code>install.py</code> again.
+        It detects existing dependencies and skips straight to launching, so
+        relaunches are fast. After a restart or closing the terminal, this
+        same step is what brings the app back.
       </p>
       <p>
         <strong>macOS</strong> — double-click <code>install.py</code> in Finder. Python
@@ -222,30 +228,61 @@
   </div>
 
   <script>
-    // Poll the local server's health endpoint. CORS is allowed wide-open
-    // by the server (it only binds to localhost). On `file://` origins,
-    // Chrome/Firefox/Safari permit fetches to localhost without preflight
-    // for simple GET requests.
-    const HEALTH_URL = "http://localhost:8765/api/health";
-    const APP_URL = "http://localhost:8765/";
-    const ONBOARDING_URL = "http://localhost:8765/onboarding";
+    // Probe a small port range and lock onto whichever port the server
+    // bound to. install.py picks the first free port in the same range,
+    // so this stays in sync no matter which one it ended up on.
+    const PORT_RANGE_START = 8765;
+    const PORT_RANGE_COUNT = 11;
+    const PORTS = Array.from(
+      { length: PORT_RANGE_COUNT },
+      (_, i) => PORT_RANGE_START + i,
+    );
     const POLL_MS = 2000;
+    const PROBE_TIMEOUT_MS = 600;
+    // Remember the last working port so subsequent polls go straight there.
+    const LS_PORT_KEY = "prashnam-voice.lastPort";
 
     const $ = (id) => document.getElementById(id);
     let lastState = null;     // "down" | "running"
+    let activePort = parseInt(localStorage.getItem(LS_PORT_KEY) || "0", 10) || null;
+
+    async function probeOne(port) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+      try {
+        const r = await fetch(`http://localhost:${port}/api/health`, {
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+        if (!r.ok) return null;
+        return await r.json();
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
 
     async function poll() {
-      let resp = null;
-      try {
-        const r = await fetch(HEALTH_URL, { cache: "no-store" });
-        if (r.ok) resp = await r.json();
-      } catch { /* network error == not running */ }
-
-      if (resp && resp.status === "ok") {
-        showRunning(resp);
-      } else {
-        showDown();
+      // Re-check the last-known port first; that's the common steady state.
+      if (activePort) {
+        const payload = await probeOne(activePort);
+        if (payload && payload.status === "ok") {
+          return showRunning(payload, activePort);
+        }
+        activePort = null;
+        localStorage.removeItem(LS_PORT_KEY);
       }
+      // Probe the range top-to-bottom until something answers.
+      for (const p of PORTS) {
+        const payload = await probeOne(p);
+        if (payload && payload.status === "ok") {
+          activePort = p;
+          localStorage.setItem(LS_PORT_KEY, String(p));
+          return showRunning(payload, p);
+        }
+      }
+      showDown();
     }
 
     function showDown() {
@@ -260,17 +297,19 @@
       $("step3").classList.remove("done");
     }
 
-    function showRunning(payload) {
+    function showRunning(payload, port) {
       if (lastState === "running") return;
       lastState = "running";
       const pill = $("status-pill");
       pill.className = "status-pill ok";
-      pill.innerHTML = `<span class="dot"></span>Server running · v${payload.version}`;
+      const portLabel = port === PORT_RANGE_START ? "" : ` · port ${port}`;
+      pill.innerHTML = `<span class="dot"></span>Server running · v${payload.version}${portLabel}`;
       $("step1").classList.add("done");
       $("step2").classList.add("done");
       $("step3").classList.add("done");
 
-      const target = payload.onboarded ? APP_URL : ONBOARDING_URL;
+      const base = `http://localhost:${port}`;
+      const target = payload.onboarded ? `${base}/` : `${base}/onboarding`;
       const link = $("open-link");
       link.href = target;
       $("open-detail").textContent = payload.onboarded

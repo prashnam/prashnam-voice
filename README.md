@@ -34,6 +34,20 @@ official Python installer).
    "Open app" button. Keep the installer's window open while you use the
    app — closing it stops the server.
 
+### Daily launch (after restart, closed terminal, etc.)
+
+Run `install.py` again. The script is idempotent:
+
+- If the venv already exists and dependencies are up-to-date (its
+  `egg-info` mtime ≥ `pyproject.toml` mtime), the slow pip step is
+  skipped and the server starts in a couple of seconds.
+- If port `8765` is busy (an old instance, or another service), it
+  walks up to `8775` and uses the first free one. The bootstrap page
+  (`index.html`) probes the same range, so deep-links keep working.
+- To force a clean reinstall: `rm -rf .venv` and run `install.py`.
+
+Pinning a specific port: `PRASHNAM_PORT=9000 python3 install.py`.
+
 ### Manual install (terminal)
 
 If your system doesn't run `.py` files on double-click, or you'd just rather
