@@ -99,8 +99,8 @@ def synthesize_segment_lang(
             f"segment {segment.id} has no {lang}/{rotation_id} translation; translate first"
         )
 
-    voice = project.voice_for(lang)
-    pace = project.pace_for(lang)
+    voice = project.voice_for(lang, segment)
+    pace = project.pace_for(lang, segment)
 
     tts, cfg = engines.get_tts()
     cached = cache_path(text, lang, voice, pace, model_id=tts.name)

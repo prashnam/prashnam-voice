@@ -86,6 +86,10 @@ class CompleteOnboardingRequest(BaseModel):
     settings: dict[str, dict[str, str]] = Field(default_factory=dict)
 
 
+class DownloadModelsRequest(BaseModel):
+    token: str | None = None
+
+
 class CreateProjectRequest(BaseModel):
     name: str
     langs: list[str] | None = None
@@ -114,6 +118,15 @@ class EditSegmentRequest(BaseModel):
 
 class EditSegmentTemplateRequest(BaseModel):
     use_template: bool
+
+
+class EditSegmentOverrideRequest(BaseModel):
+    """Set or clear a per-segment voice / pace override for one language.
+    Send `voice` / `pace` to set; send `null` to clear; omit the field to
+    leave the existing override untouched."""
+    lang: str
+    voice: str | None = None
+    pace:  str | None = None
 
 
 class RegenerateRequest(BaseModel):
@@ -228,6 +241,16 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
             "sample": result.sample,
         }
 
+    @api.post("/api/onboarding/download-models")
+    def onboarding_download_models(req: DownloadModelsRequest) -> dict:
+        started = onboarding_helpers.start_model_download(req.token)
+        return {"ok": True, "started": started}
+
+    @api.get("/api/onboarding/download-progress")
+    def onboarding_download_progress() -> dict:
+        from dataclasses import asdict
+        return asdict(onboarding_helpers.get_download_progress())
+
     @api.post("/api/onboarding/complete")
     def onboarding_complete(req: CompleteOnboardingRequest) -> dict:
         try:
@@ -280,6 +303,24 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
     @api.get("/api/paces")
     def list_paces() -> dict[str, list[str] | str]:
         return {"options": list(PACE_PHRASES.keys()), "default": DEFAULT_PACE}
+
+    @api.get("/api/voices")
+    def list_voices_all() -> dict[str, list[str]]:
+        """Per-language voice pool from the active TTS adapter. Used by the
+        per-segment override picker. Cheap — no model load required."""
+        try:
+            tts, cfg = engines.get_tts()
+        except Exception:
+            return {c: [LANGUAGES[c].voice] for c in ALL_LANG_CODES}
+        out: dict[str, list[str]] = {}
+        for code in ALL_LANG_CODES:
+            try:
+                voices = tts.voices_for(code, cfg) or []
+            except Exception:
+                voices = []
+            ids = [v.id for v in voices] or [LANGUAGES[code].voice]
+            out[code] = ids
+        return out
 
     @api.get("/api/domains")
     def list_domains() -> list[dict]:
@@ -457,6 +498,36 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         return {"segment": seg.to_json(), "project": _project_payload(pid, store)}
+
+    @api.patch("/api/projects/{pid}/segments/{seg_id}/override")
+    def edit_segment_override(
+        pid: str, seg_id: str, req: EditSegmentOverrideRequest,
+    ) -> dict:
+        if req.lang not in LANGUAGES:
+            raise HTTPException(400, f"unknown language: {req.lang}")
+        # Pydantic's `model_fields_set` distinguishes "client sent the field"
+        # (intent: set or clear) from "client omitted it" (intent: leave
+        # existing override alone). Voice "" is treated the same as null.
+        sent = req.model_fields_set
+        voice_arg = None
+        if "voice" in sent:
+            v = req.voice or None
+            voice_arg = (req.lang, v)
+        pace_arg = None
+        if "pace" in sent:
+            p = req.pace or None
+            pace_arg = (req.lang, p)
+        if voice_arg is None and pace_arg is None:
+            raise HTTPException(400, "supply 'voice' or 'pace' (or both)")
+        try:
+            seg = store.set_segment_overrides(
+                pid, seg_id, voice=voice_arg, pace=pace_arg,
+            )
+        except (FileNotFoundError, KeyError):
+            raise HTTPException(404, "project or segment not found")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        return {"segment": seg.to_json()}
 
     @api.patch("/api/projects/{pid}/segments/{seg_id}/template")
     def edit_segment_template(

@@ -27,6 +27,7 @@ const state = {
   langs: [],          // [{code, name, voice}]
   paces: [],
   defaultPace: "moderate",
+  voicesByLang: {},   // {lang_code: [voice_id, ...]} — from active TTS adapter
   domains: [],        // [{name, label, description, segment_types, default_templates}]
   currentProject: null,
   // per-segment edit tracking
@@ -103,6 +104,8 @@ const Api = {
     api("POST", `/api/projects/${pid}/segments/${sid}/regenerate`,
         { langs, rotation_ids: rotationIds }),
   setUseTemplate: (pid, sid, use) => api("PATCH", `/api/projects/${pid}/segments/${sid}/template`, { use_template: use }),
+  setOverride:    (pid, sid, body) => api("PATCH", `/api/projects/${pid}/segments/${sid}/override`, body),
+  voices:         ()              => api("GET",   "/api/voices"),
   setLockAtEnd: (pid, sid, lock)   => api("PATCH", `/api/projects/${pid}/segments/${sid}/lock`, { lock_at_end: lock }),
   enableRotations: (pid, body)     => api("POST",  `/api/projects/${pid}/rotations/enable`, body),
   disableRotations:(pid)           => api("POST",  `/api/projects/${pid}/rotations/disable`),
@@ -736,7 +739,69 @@ function buildLangCell(proj, seg, lang) {
     await loadTakes(proj.id, seg.id, lang, cell);
   });
 
+  // Per-segment voice / pace overrides (option segments only — questions
+  // and bodies inherit project-level voice/pace).
+  const overrides = $(".overrides", cell);
+  if (overrides && seg.type === "option") {
+    overrides.hidden = false;
+    populateOverrideRow(cell, proj, seg, lang);
+  } else if (overrides) {
+    overrides.hidden = true;
+  }
+
   return cell;
+}
+
+function populateOverrideRow(cell, proj, seg, lang) {
+  const voiceSel = cell.querySelector(".ovr-voice");
+  const paceSel  = cell.querySelector(".ovr-pace");
+  if (!voiceSel || !paceSel) return;
+
+  const projectVoice = (proj.voices || {})[lang] || (state.langs.find((l) => l.code === lang) || {}).voice || "";
+  const projectPace  = (proj.paces  || {})[lang] || proj.default_pace || "moderate";
+  const segVoice = (seg.voices || {})[lang] || "";
+  const segPace  = (seg.paces  || {})[lang] || "";
+  const pool = state.voicesByLang[lang] || [projectVoice];
+
+  // Voice select: first option is "(default — project's <name>)"; the rest
+  // are the active-adapter voice pool. Selecting the default clears the
+  // override.
+  voiceSel.innerHTML = `<option value="">(default · ${projectVoice})</option>` +
+    pool.map((v) => `<option value="${v}"${v === segVoice ? " selected" : ""}>${v}</option>`).join("");
+  voiceSel.classList.toggle("set", !!segVoice);
+  voiceSel.onchange = async () => {
+    await applyOverride(proj.id, seg.id, lang, { voice: voiceSel.value || null }, voiceSel);
+  };
+
+  paceSel.innerHTML = `<option value="">(default · ${projectPace})</option>` +
+    state.paces.map((p) => `<option value="${p}"${p === segPace ? " selected" : ""}>${PACE_LABELS[p] || p}</option>`).join("");
+  paceSel.classList.toggle("set", !!segPace);
+  paceSel.onchange = async () => {
+    await applyOverride(proj.id, seg.id, lang, { pace: paceSel.value || null }, paceSel);
+  };
+}
+
+async function applyOverride(pid, sid, lang, body, sourceEl) {
+  try {
+    const r = await Api.setOverride(pid, sid, { lang, ...body });
+    // Reflect new state in the in-memory project so a re-render is consistent.
+    const proj = state.currentProject;
+    const segObj = proj?.segments.find((s) => s.id === sid);
+    if (segObj) {
+      Object.assign(segObj, r.segment);
+    }
+    sourceEl.classList.toggle("set", !!sourceEl.value);
+    refreshSegmentCells(sid);
+    toast(
+      "voice" in body
+        ? (body.voice ? `Voice for ${lang} → ${body.voice}` : `${lang} voice override cleared`)
+        : (body.pace  ? `Pace for ${lang} → ${PACE_LABELS[body.pace] || body.pace}` : `${lang} pace override cleared`),
+      "ok",
+      1800,
+    );
+  } catch (e) {
+    toast("Couldn't save override: " + e.message, "error");
+  }
 }
 
 async function loadTakes(pid, sid, lang, cell) {
@@ -1460,6 +1525,23 @@ function renderRotationsFieldset(proj) {
   };
 }
 
+async function refreshTopbarEngine() {
+  const link = $("#topbar-engine");
+  const label = $("#topbar-engine-name");
+  if (!link || !label) return;
+  try {
+    const h = await api("GET", "/api/health");
+    // The adapter for translator + tts is usually the same; show the
+    // shared name when they match, otherwise show the translator's.
+    const name = h.translator === h.tts ? h.translator : `${h.translator} / ${h.tts}`;
+    label.textContent = name;
+    link.classList.toggle("cloud", h.translator !== "local-ai4bharat" || h.tts !== "local-ai4bharat");
+    link.title = `Active engine: ${name}. Click to switch.`;
+  } catch {
+    label.textContent = "engine ?";
+  }
+}
+
 function setupHelpDialog() {
   const dlg = $("#help-dialog");
   const open = $("#help-btn");
@@ -1573,13 +1655,14 @@ function formatTime(iso) {
 
 (async () => {
   try {
-    const [langs, paces, domains] = await Promise.all([
-      Api.langs(), Api.paces(), Api.domains(),
+    const [langs, paces, domains, voices] = await Promise.all([
+      Api.langs(), Api.paces(), Api.domains(), Api.voices(),
     ]);
     state.langs = langs;
     state.paces = paces.options;
     state.defaultPace = paces.default;
     state.domains = domains;
+    state.voicesByLang = voices;
   } catch (e) {
     document.getElementById("app").innerHTML =
       `<section class="container"><p>Failed to reach the API: ${e.message}</p></section>`;
@@ -1590,6 +1673,7 @@ function formatTime(iso) {
   setupImportCsvDialog();
   setupHelpDialog();
   setupEnableRotationsDialog();
+  refreshTopbarEngine();
   await render();
   // Pick up any jobs already running on the server (e.g. after a page reload
   // mid-regen). The poller self-stops when nothing is active.

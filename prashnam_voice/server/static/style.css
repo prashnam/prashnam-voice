@@ -93,6 +93,28 @@ body {
   border-color: var(--accent);
 }
 
+.topbar-engine {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--row);
+}
+.topbar-engine:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.topbar-engine .engine-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--good);
+}
+.topbar-engine.cloud .engine-dot { background: var(--accent); }
+
 .container {
   max-width: 1100px;
   margin: 0 auto;
@@ -390,6 +412,40 @@ details.settings > summary {
   padding: 2px 8px;
   font-size: 11px;
 }
+.cell .overrides {
+  margin-top: 4px;
+}
+.cell .overrides > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 1px 0;
+}
+.cell .overrides > summary:hover { color: var(--ink); }
+.cell .overrides .overrides-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 2px;
+}
+.cell .overrides .overrides-row label.inline { gap: 4px; }
+.cell .overrides .overrides-row label.inline > span {
+  min-width: 36px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cell .overrides select {
+  padding: 2px 4px;
+  font-size: 11px;
+  min-width: 90px;
+}
+.cell .overrides select.set {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .cell .takes summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .cell .takes ul { list-style: none; padding-left: 0; margin: 4px 0 0; }
 .cell .takes li {

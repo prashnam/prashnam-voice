@@ -148,6 +148,37 @@
     </div>
   </template>
 
+  <template id="step-download-models">
+    <h2>Download local models</h2>
+    <p>One-time download (~4.5 GB). After this finishes the app runs fully
+      offline. The translator (~800 MB) downloads first, then the TTS
+      model (~3.6 GB).</p>
+    <div id="download-status">
+      <div class="model-progress" data-model="ai4bharat/indictrans2-en-indic-dist-200M">
+        <div class="model-row">
+          <strong>IndicTrans2</strong>
+          <span class="muted small status-text">queued…</span>
+        </div>
+        <progress value="0" max="100"></progress>
+        <span class="muted small bytes"></span>
+      </div>
+      <div class="model-progress" data-model="ai4bharat/indic-parler-tts">
+        <div class="model-row">
+          <strong>Indic Parler-TTS</strong>
+          <span class="muted small status-text">queued…</span>
+        </div>
+        <progress value="0" max="100"></progress>
+        <span class="muted small bytes"></span>
+      </div>
+    </div>
+    <p class="muted small" id="download-error" hidden></p>
+    <div class="actions">
+      <button class="ghost" data-back>← Back</button>
+      <button class="ghost" id="btn-skip-download">Skip for now</button>
+      <button class="primary" id="btn-download-next" data-next disabled>Continue →</button>
+    </div>
+  </template>
+
   <template id="step-sarvam-account">
     <h2>Sign in to Sarvam.ai</h2>
     <p>You'll need an account on dashboard.sarvam.ai (Google sign-in works) to generate an API key.</p>

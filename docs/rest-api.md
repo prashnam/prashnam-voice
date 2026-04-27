@@ -72,6 +72,24 @@ Pace enum + the project default.
 }
 ```
 
+### `GET /api/voices`
+
+Per-language speaker pool from the **currently active** TTS adapter.
+Used by the per-segment override picker. Cheap — no model load.
+
+**Response** `200`:
+```json
+{
+  "en":  ["Mary", "Thoma", "Swapna", ...],
+  "hi":  ["Divya", "Rohit", "Aman", "Rani"],
+  "ta":  ["Jaya", "Kavitha"],
+  "...": ["..."]
+}
+```
+The set changes when the active adapter changes (e.g. switching to
+Sarvam returns the v3 speaker pool of 35 names instead of the
+Parler model card's per-language sets).
+
 ### `GET /api/domains`
 
 All registered domain packs (built-ins: `poll`, `announcement`).
@@ -140,6 +158,49 @@ Probe a Sarvam.ai API key by translating "hello" to Hindi.
   "sample":  "नमस्ते"
 }
 ```
+
+### `POST /api/onboarding/download-models`
+
+Kick off the AI4Bharat model download (IndicTrans2 + Indic Parler-TTS,
+~4.5 GB total) in a background thread. Returns immediately. Single-flight:
+calling while a download is in progress is a no-op.
+
+**Body**: `{"token": string | null}` — HF read token used to authenticate
+the gated downloads. Falls back to the `HF_TOKEN` env var (e.g. set by
+`huggingface-cli login`) if `null`.
+
+**Response** `200`:
+```json
+{"ok": true, "started": true}
+```
+`started` is `false` if a download was already in progress.
+
+### `GET /api/onboarding/download-progress`
+
+Byte-level progress, computed by polling the HF cache directory. Polled
+by the wizard on a 1-second cadence while the download step is open.
+
+**Response** `200`:
+```json
+{
+  "state": "idle" | "running" | "done" | "error",
+  "error": null,
+  "started_at":  1714234567.123,
+  "finished_at": 0.0,
+  "models": {
+    "ai4bharat/indictrans2-en-indic-dist-200M": {
+      "model_id": "ai4bharat/indictrans2-en-indic-dist-200M",
+      "total_bytes":      810000000,
+      "downloaded_bytes": 312500000,
+      "status": "running",
+      "error":  null
+    },
+    "ai4bharat/indic-parler-tts": { "...": "..." }
+  }
+}
+```
+Models that are already cached on disk transition straight to
+`"status": "done"`.
 
 ### `POST /api/onboarding/complete`
 
@@ -386,6 +447,33 @@ Triggers a recompute of the project's rotations if rotations are active.
 
 **Response** `200`: `{"segment": {...}, "project": {...}}`. **`400`** if
 the segment is not an option.
+
+### `PATCH /api/projects/{pid}/segments/{sid}/override`
+
+Set or clear a **per-segment, per-language voice or pace override**. The
+override hierarchy at synthesis time is:
+
+> segment override → project-level override → language default
+
+Voice and pace can be addressed independently. Send the field to set a
+value, send `null` to clear, **omit the field** to leave the existing
+override untouched (this distinction is enforced via Pydantic's
+`model_fields_set`, so JSON `null` ≠ absent).
+
+**Body**:
+```json
+{
+  "lang":  "hi",
+  "voice": "Aman" | null,
+  "pace":  "slow" | null
+}
+```
+
+Setting an override invalidates that lang's cached audio takes (the
+synthesis voice/pace changed); translations survive.
+
+**Response** `200`: `{"segment": {...}}`. **`400`** if the lang is
+unknown, the pace is unknown, or the body has neither `voice` nor `pace`.
 
 ---
 

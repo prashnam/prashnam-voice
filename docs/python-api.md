@@ -194,7 +194,60 @@ CSV schemas are documented in [`README.md`](../README.md) and at the
 import dialog in the web UI. Errors are non-fatal — bad rows are reported,
 good rows still import.
 
-## 7. Numerals & lexicon
+## 7. Per-segment voice / pace overrides
+
+By default the voice and pace used for synthesis come from the
+project's per-language settings. You can override per-segment, per-language:
+
+```python
+store.set_segment_overrides(
+    proj.id, segment.id,
+    voice=("hi", "Aman"),    # use Aman for this option's Hindi take
+    pace=("ta", "slow"),     # render Tamil at half speed
+)
+
+# Clear an override:
+store.set_segment_overrides(proj.id, segment.id, voice=("hi", None))
+```
+
+At synthesis time, the resolution order is:
+
+> `segment.voices[lang]` → `project.voices[lang]` → `LANGUAGES[lang].voice`
+
+Same for pace. Setting an override invalidates that language's cached
+audio takes (the synthesis differs); translations survive.
+
+The full per-language voice pool from the active TTS adapter:
+
+```python
+from prashnam_voice.public import Engine
+
+tts, cfg = Engine.get_tts()
+for v in tts.voices_for("hi", cfg):
+    print(v.id, v.name)
+```
+
+## 8. Model download progress
+
+When using the local engine, the AI4Bharat models (~4.5 GB) download on
+first use. The `prashnam_voice.onboarding` module exposes a tracker:
+
+```python
+from prashnam_voice import onboarding
+
+onboarding.start_model_download(token="hf_...")    # non-blocking
+job = onboarding.get_download_progress()           # poll
+print(job.state)                  # "idle" | "running" | "done" | "error"
+for mid, mp in job.models.items():
+    print(mid, mp.downloaded_bytes, "/", mp.total_bytes)
+```
+
+Single-flight: calling `start_model_download` while a download is
+running is a no-op. The progress is computed by polling the Hugging
+Face cache directory size, so it works regardless of how huggingface_hub
+chooses to fetch (multi-file, parallel, resumed, etc.).
+
+## 9. Numerals & lexicon
 
 Both run in `effective_text(project, segment, lang)` which is what the
 pipeline actually feeds the translator/TTS. You probably never need to
@@ -212,7 +265,7 @@ numerals_to_words("BJP123 alpha")     # → "BJP123 alpha"  (alphanumerics intac
 The lexicon is per-project — set via `ProjectStore.update_settings(...,
 lexicon={...})` or by editing `project.json` directly.
 
-## 8. Configuration paths
+## 10. Configuration paths
 
 | File | Purpose |
 |---|---|

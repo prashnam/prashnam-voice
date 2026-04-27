@@ -142,6 +142,39 @@ body.onboarding-page main {
 
 .muted.small, .small { font-size: 12px; }
 
+/* ---------- Model download step ---------- */
+
+#download-status {
+  display: flex; flex-direction: column; gap: 16px;
+  margin: 16px 0 8px;
+}
+.model-progress {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.model-progress .model-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 14px;
+}
+.model-progress progress {
+  width: 100%;
+  height: 10px;
+  appearance: none;
+}
+.model-progress progress::-webkit-progress-bar { background: var(--row); border-radius: 4px; }
+.model-progress progress::-webkit-progress-value { background: var(--accent); border-radius: 4px; }
+.model-progress progress::-moz-progress-bar { background: var(--accent); border-radius: 4px; }
+.model-progress.done progress::-webkit-progress-value,
+.model-progress.done progress::-moz-progress-bar { background: var(--good); }
+.model-progress.error progress::-webkit-progress-value,
+.model-progress.error progress::-moz-progress-bar { background: var(--danger); }
+#download-error {
+  background: var(--bad-bg);
+  color: var(--danger);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 8px 0 0;
+}
+
 /* ----------------------------------------------------------------------- */
 /* Onboarding figures (HF screenshots / SVG illustrations)                  */
 /* ----------------------------------------------------------------------- */

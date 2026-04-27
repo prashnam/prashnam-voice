@@ -93,6 +93,10 @@ class Segment:
     english: str = ""
     use_template: bool = True                  # opt out of project's wrapping
     lock_at_end: bool = False                  # NOTA / "Don't know" — never shuffles
+    # Per-language voice / pace overrides. Take precedence over the
+    # project-level voice / pace for this segment when set.
+    voices: dict[str, str] = field(default_factory=dict)
+    paces:  dict[str, str] = field(default_factory=dict)
     # Per-language, per-rotation translation. The "r0" rotation is always
     # the canonical (declared) order.
     translations: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -110,6 +114,8 @@ class Segment:
             english=d.get("english", ""),
             use_template=bool(d.get("use_template", True)),
             lock_at_end=bool(d.get("lock_at_end", False)),
+            voices=dict(d.get("voices") or {}),
+            paces=dict(d.get("paces") or {}),
             translations=_migrate_per_rotation(d.get("translations")),
             current_takes=_migrate_per_rotation(d.get("current_takes")),
         )
@@ -205,10 +211,17 @@ class Project:
                 return s
         raise KeyError(seg_id)
 
-    def voice_for(self, lang: str) -> str:
+    def voice_for(self, lang: str, segment: "Segment | None" = None) -> str:
+        """Resolve the voice with the override hierarchy:
+        segment-level override → project-level override → language default.
+        """
+        if segment is not None and segment.voices.get(lang):
+            return segment.voices[lang]
         return self.voices.get(lang) or LANGUAGES[lang].voice
 
-    def pace_for(self, lang: str) -> str:
+    def pace_for(self, lang: str, segment: "Segment | None" = None) -> str:
+        if segment is not None and segment.paces.get(lang):
+            return segment.paces[lang]
         return self.paces.get(lang, self.default_pace)
 
     def option_index(self, seg_id: str) -> int:
@@ -751,6 +764,49 @@ class ProjectStore:
     # ------------------------------------------------------------------
     # Templates / per-segment flags (existing)
     # ------------------------------------------------------------------
+
+    def set_segment_overrides(
+        self,
+        pid: str,
+        seg_id: str,
+        *,
+        voice: tuple[str, str | None] | None = None,   # (lang, value); None clears
+        pace:  tuple[str, str | None] | None = None,
+    ) -> Segment:
+        """Set a per-segment voice / pace override for one language.
+
+        Pass `voice=("hi", "Aman")` to set, or `voice=("hi", None)` to clear.
+        Setting an override invalidates that lang's cached audio (translation
+        survives — only the synthesis voice/pace differs)."""
+        def _do(p: Project) -> None:
+            seg = p.find_segment(seg_id)
+            invalidate_lang: str | None = None
+            if voice is not None:
+                lang, val = voice
+                if val:
+                    if lang not in LANGUAGES:
+                        raise ValueError(f"unknown language: {lang}")
+                    seg.voices[lang] = val
+                else:
+                    seg.voices.pop(lang, None)
+                invalidate_lang = lang
+            if pace is not None:
+                lang, val = pace
+                if val:
+                    if lang not in LANGUAGES:
+                        raise ValueError(f"unknown language: {lang}")
+                    if val not in PACE_PHRASES:
+                        raise ValueError(f"unknown pace: {val}")
+                    seg.paces[lang] = val
+                else:
+                    seg.paces.pop(lang, None)
+                invalidate_lang = lang
+            if invalidate_lang and invalidate_lang in seg.current_takes:
+                # Voice/pace change → audio is stale, but translation is not.
+                seg.current_takes.pop(invalidate_lang, None)
+
+        self.mutate(pid, _do)
+        return self.load(pid).find_segment(seg_id)
 
     def set_segment_use_template(
         self, pid: str, seg_id: str, use: bool

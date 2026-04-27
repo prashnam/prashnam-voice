@@ -21,6 +21,7 @@ const FLOWS = {
     { id: "tos-it2",     label: "Translator T&Cs" },
     { id: "tos-parler",  label: "TTS T&Cs"        },
     { id: "token",       label: "Token"           },
+    { id: "download",    label: "Download"        },
     { id: "done",        label: "Done"            },
   ],
   sarvam: [
@@ -61,6 +62,8 @@ const Api = {
   testHf:    (token)   => api("POST", "/api/onboarding/test-hf", { token }),
   testSarvam:(api_key) => api("POST", "/api/onboarding/test-sarvam", { api_key }),
   complete:  (payload) => api("POST", "/api/onboarding/complete", payload),
+  startDownload: (token) => api("POST", "/api/onboarding/download-models", { token: token || null }),
+  downloadProgress: () => api("GET", "/api/onboarding/download-progress"),
 };
 
 // --------------------------------------------------------------------------
@@ -130,10 +133,16 @@ function bindStep(step) {
     const input = $("#hf-token");
     if (state.hfToken) input.value = state.hfToken;
     $("#btn-test-hf").addEventListener("click", onTestHf);
+    // For local: persist config (saves the token), then move on to the
+    // download step where the wizard streams progress.
     $("#btn-hf-next").addEventListener("click", () => {
       state.hfToken = input.value;
       complete().then(() => goNext());
     });
+  }
+
+  if (step === "download") {
+    bindDownloadStep();
   }
 
   if (step === "sarvam-key") {
@@ -166,6 +175,94 @@ function goPrev() {
   const i = flow.findIndex((s) => s.id === state.step);
   if (i > 0) go(flow[i - 1].id);
 }
+
+// --------------------------------------------------------------------------
+// Model download step
+// --------------------------------------------------------------------------
+
+let _downloadPollTimer = null;
+
+function bindDownloadStep() {
+  const skipBtn = $("#btn-skip-download");
+  const nextBtn = $("#btn-download-next");
+  if (skipBtn) skipBtn.addEventListener("click", () => {
+    stopDownloadPoll();
+    goNext();
+  });
+  // Kick off the actual download. The endpoint is a no-op if a job's
+  // already running, so this is safe to call on every entry into the step.
+  Api.startDownload(state.hfToken).catch(() => { /* server-side error surfaces via progress poll */ });
+  // Poll once immediately, then on an interval.
+  pollDownload();
+  _downloadPollTimer = setInterval(pollDownload, 1000);
+}
+
+function stopDownloadPoll() {
+  if (_downloadPollTimer) {
+    clearInterval(_downloadPollTimer);
+    _downloadPollTimer = null;
+  }
+}
+
+async function pollDownload() {
+  let job;
+  try { job = await Api.downloadProgress(); }
+  catch { return; }
+
+  const errEl = $("#download-error");
+  if (job.error) {
+    errEl.hidden = false;
+    errEl.textContent = job.error;
+  } else if (errEl) {
+    errEl.hidden = true;
+  }
+
+  let allDone = true;
+  for (const [modelId, mp] of Object.entries(job.models || {})) {
+    const card = document.querySelector(`.model-progress[data-model="${modelId}"]`);
+    if (!card) continue;
+    const bar = card.querySelector("progress");
+    const status = card.querySelector(".status-text");
+    const bytes = card.querySelector(".bytes");
+    const total = mp.total_bytes || 0;
+    const done = mp.downloaded_bytes || 0;
+    const pct = total > 0 ? Math.min(100, (done / total) * 100) : 0;
+    bar.value = pct;
+    bytes.textContent = total ? `${formatBytes(done)} / ${formatBytes(total)}  (${pct.toFixed(0)}%)` : "";
+    card.classList.remove("done", "error");
+    switch (mp.status) {
+      case "queued":
+        status.textContent = "queued…";
+        allDone = false;
+        break;
+      case "running":
+        status.textContent = "downloading…";
+        allDone = false;
+        break;
+      case "done":
+        status.textContent = "✓ ready";
+        card.classList.add("done");
+        break;
+      case "error":
+        status.textContent = `✗ ${mp.error || "error"}`;
+        card.classList.add("error");
+        allDone = false;
+        break;
+    }
+  }
+
+  const nextBtn = $("#btn-download-next");
+  if (nextBtn) nextBtn.disabled = !allDone;
+  if (allDone) stopDownloadPoll();
+}
+
+function formatBytes(n) {
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + " GB";
+  if (n >= 1_000_000)     return (n / 1_000_000).toFixed(1) + " MB";
+  if (n >= 1_000)         return (n / 1_000).toFixed(0) + " KB";
+  return `${n} B`;
+}
+
 
 // --------------------------------------------------------------------------
 // Probes

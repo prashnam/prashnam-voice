@@ -10,6 +10,9 @@
   <header class="topbar">
     <a href="#/" class="brand">prashnam-voice</a>
     <span class="sub" id="topbar-sub">Local English → Indian-language poll TTS</span>
+    <a href="/onboarding" id="topbar-engine" class="topbar-engine" title="Click to switch engines / re-run onboarding">
+      <span class="engine-dot"></span><span id="topbar-engine-name">…</span>
+    </a>
     <a href="/docs" class="topbar-link" title="Open the documentation viewer">Docs</a>
     <button id="help-btn" class="topbar-help" type="button" title="Help" aria-label="Help">?</button>
     <span class="palette-credit" title="Palette: चूना · rangrez">चूना</span>
@@ -320,6 +323,19 @@ ann1,Please remain seated</pre>
       </div>
       <div class="translation muted" data-role="translation">…</div>
       <audio class="player" controls preload="none" hidden></audio>
+      <details class="overrides" hidden>
+        <summary>Voice / pace</summary>
+        <div class="overrides-row">
+          <label class="inline">
+            <span>Voice</span>
+            <select class="ovr-voice"></select>
+          </label>
+          <label class="inline">
+            <span>Pace</span>
+            <select class="ovr-pace"></select>
+          </label>
+        </div>
+      </details>
       <details class="takes" hidden>
         <summary>Takes</summary>
         <ul class="take-list"></ul>

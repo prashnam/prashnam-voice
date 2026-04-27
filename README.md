@@ -3,6 +3,20 @@
 Local English → Indian-language voice poll generator for [prashnam.ai](https://prashnam.ai).
 Type a poll question and options in English, pick languages, get an MP3 per item per language. Fully offline after first-run model download. No API keys.
 
+## Languages
+
+23 in total: English + 22 Indic languages — every language where
+IndicTrans2 (translation) and Indic Parler-TTS (audio) overlap. New
+projects default to **English + Hindi**; the rest sit unchecked in
+project settings for opt-in.
+
+> en, hi, ta, te, bn, mr, kn, gu, ml, or, pa, as, ur, ne, sa, mai, ks,
+> sd, brx, doi, kok, mni, sat
+
+Voices: per-language pool from the Indic Parler-TTS model card (e.g.
+Hindi has Rohit / Divya / Aman / Rani; English has 21 speakers); cloud
+adapter (Sarvam) exposes 35 v3 voices that work cross-language.
+
 ## Stack
 
 | | |
@@ -103,10 +117,15 @@ The web app is project-centric:
 
 - **Project list** (`#/`): create, open, delete projects. Each project lives on disk under `./projects/<id>/`.
 - **Project editor** (`#/p/<id>`): edit settings (name, languages, default pace, per-language pace overrides), and a list of segments (one question + N options).
-  - Type English text in any segment — after a 700 ms pause, the backend re-translates and regenerates audio in every selected language for that segment.
-  - Each (segment, language) cell shows the translated text, an inline audio player, a `⟳` to regenerate just that one MP3, and a "Takes" disclosure to browse and switch between all previous attempts.
+  - Type English text in any segment — after a 5 s pause, the backend re-translates and regenerates audio in every selected language for that segment.
+  - Each (segment, language) cell shows the translated text, an inline audio player, a `⟳` to regenerate just that one MP3, a "Voice / pace" disclosure to override the per-language defaults *for that one segment*, and a "Takes" disclosure to browse and switch between all previous attempts.
   - Each segment row has a `⟳ all` button to regenerate every selected language for that segment.
+  - **Option-order rotations**: opt in from the editor toolbar to generate K shuffled orderings of options (NOTA pinned to the end). Each rotation gets its own audio per language; the zip export organizes by `r0/<lang>/...`, `r1/<lang>/...`.
   - "Download .zip" packs the current take per (segment, language) into a flat `<lang>/{question,option_N}.mp3` layout.
+
+The topbar shows the active engine (`local-ai4bharat` or `sarvam`) as a
+small pill — click it to re-run onboarding and switch engines without
+editing config files.
 
 ### On-disk layout (per project)
 
