@@ -4,11 +4,21 @@ from prashnam_voice.config import ALL_LANG_CODES, LANGUAGES, parse_langs
 
 
 def test_languages_present():
-    # 10 Indic + English. English first so new-project defaults include it.
-    expected = {"en", "hi", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ml", "or"}
+    # English + 22 Indic where IndicTrans2 + Indic Parler-TTS overlap.
+    expected = {
+        "en", "hi", "ta", "te", "bn", "mr", "kn", "gu", "ml", "or", "pa",
+        "as", "ur", "ne", "sa", "mai", "ks", "sd", "brx", "doi", "kok", "mni", "sat",
+    }
     assert set(ALL_LANG_CODES) == expected
     assert set(LANGUAGES.keys()) == expected
+    # English first so new-project default surfaces it on top of the list.
     assert ALL_LANG_CODES[0] == "en"
+    assert ALL_LANG_CODES[1] == "hi"
+
+
+def test_default_project_langs():
+    from prashnam_voice.config import DEFAULT_PROJECT_LANGS
+    assert DEFAULT_PROJECT_LANGS == ["en", "hi"]
 
 
 def test_each_language_has_voice_and_it2_tag():

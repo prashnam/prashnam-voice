@@ -129,6 +129,7 @@ from .config import (  # noqa: F401
     LANGUAGES,
     LangSpec,
     ALL_LANG_CODES,
+    DEFAULT_PROJECT_LANGS,
     PACE_PHRASES,
     DEFAULT_PACE,
     parse_langs,
@@ -163,7 +164,7 @@ __all__ = [
     "config_path", "config_dir",
     "load_config", "save_config", "update_config", "set_config_path",
     # Static helpers
-    "LANGUAGES", "LangSpec", "ALL_LANG_CODES",
+    "LANGUAGES", "LangSpec", "ALL_LANG_CODES", "DEFAULT_PROJECT_LANGS",
     "PACE_PHRASES", "DEFAULT_PACE",
     "parse_langs", "pace_phrase",
     "numerals_to_words",

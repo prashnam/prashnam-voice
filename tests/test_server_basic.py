@@ -15,7 +15,12 @@ def test_languages_endpoint(client):
     assert r.status_code == 200
     payload = r.json()
     codes = [item["code"] for item in payload]
-    assert codes == ["en", "hi", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ml", "or"]
+    # 23 langs total; en + hi at the top of the list.
+    assert len(codes) == 23
+    assert codes[:2] == ["en", "hi"]
+    # Spot-check a couple of newly added ones.
+    for must_include in ("as", "ur", "ne", "sa", "mai", "brx", "mni", "sat"):
+        assert must_include in codes
 
 
 def test_paces_endpoint(client):

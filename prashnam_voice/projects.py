@@ -26,6 +26,7 @@ from typing import Iterable, Iterator
 from .config import (
     ALL_LANG_CODES,
     DEFAULT_PACE,
+    DEFAULT_PROJECT_LANGS,
     LANGUAGES,
     PACE_PHRASES,
 )
@@ -511,7 +512,9 @@ class ProjectStore:
         from . import domains as domains_mod
 
         name = (name or "").strip() or "Untitled"
-        codes = [c for c in (langs or ALL_LANG_CODES) if c in LANGUAGES]
+        # New projects start with the curated default (en + hi). Users add
+        # the rest from project settings — opt-in keeps the editor scannable.
+        codes = [c for c in (langs or DEFAULT_PROJECT_LANGS) if c in LANGUAGES]
         slug = _slugify(name)
         pid = f"{slug}-{uuid.uuid4().hex[:6]}"
         now = _now()
@@ -527,7 +530,7 @@ class ProjectStore:
         proj = Project(
             id=pid, name=name, created_at=now, updated_at=now,
             domain=domain,
-            langs=codes or list(ALL_LANG_CODES),
+            langs=codes or list(DEFAULT_PROJECT_LANGS),
             question_template=defaults.get("question_template", DEFAULT_QUESTION_TEMPLATE),
             option_template=defaults.get("option_template", DEFAULT_OPTION_TEMPLATE),
             body_template=defaults.get("body_template", ""),

@@ -244,3 +244,24 @@ def test_sarvam_tts_voices_for_returns_v3_pool():
     ids = {v.id for v in voices}
     assert "shubh" in ids
     assert len(voices) >= 30
+
+
+def test_local_tts_voices_for_uses_per_language_pool():
+    """The local Parler adapter should expose the model card's
+    per-language speakers, not a single shared list."""
+    from prashnam_voice.adapters.local.tts import LocalTTS
+    t = LocalTTS()
+
+    # Hindi pool: Rohit/Divya/Aman/Rani per the model card.
+    hi = {v.id for v in t.voices_for("hi", {})}
+    for expected in ("Rohit", "Divya", "Aman", "Rani"):
+        assert expected in hi, f"Hindi voices missing {expected!r}: {hi}"
+
+    # Tamil-specific pool: Kavitha + Jaya.
+    ta = {v.id for v in t.voices_for("ta", {})}
+    assert "Kavitha" in ta
+    assert "Jaya" in ta
+
+    # Languages without a card-listed pool fall back to a generic set.
+    sat = [v.id for v in t.voices_for("sat", {})]
+    assert len(sat) >= 5  # fallback pool is 10 strong

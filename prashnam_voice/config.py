@@ -20,23 +20,42 @@ class LangSpec:
 
 
 LANGUAGES: dict[str, LangSpec] = {
-    # English first — broadly understood across India incl. the North-East,
-    # where Hindi/Indic-language reach drops off. en→en is a translator
-    # passthrough (no model call); only the TTS adapter actually runs.
-    "en": LangSpec("en", "English",   "eng_Latn", "Aditi"),
-    "hi": LangSpec("hi", "Hindi",     "hin_Deva", "Divya"),
-    "ta": LangSpec("ta", "Tamil",     "tam_Taml", "Jaya"),
-    "te": LangSpec("te", "Telugu",    "tel_Telu", "Prakash"),
-    "bn": LangSpec("bn", "Bengali",   "ben_Beng", "Arjun"),
-    "mr": LangSpec("mr", "Marathi",   "mar_Deva", "Sanjay"),
-    "kn": LangSpec("kn", "Kannada",   "kan_Knda", "Suresh"),
-    "gu": LangSpec("gu", "Gujarati",  "guj_Gujr", "Yash"),
-    "pa": LangSpec("pa", "Punjabi",   "pan_Guru", "Divya"),
-    "ml": LangSpec("ml", "Malayalam", "mal_Mlym", "Anjali"),
-    "or": LangSpec("or", "Odia",      "ory_Orya", "Manas"),
+    # English first — broadly understood, especially across the North-East
+    # where Hindi reach drops off. en→en is a translator passthrough (no
+    # model call); only the TTS adapter actually runs.
+    "en":  LangSpec("en",  "English",     "eng_Latn", "Mary"),
+    "hi":  LangSpec("hi",  "Hindi",       "hin_Deva", "Divya"),
+    # The other ten "core" Indic languages with the strongest model coverage.
+    "ta":  LangSpec("ta",  "Tamil",       "tam_Taml", "Jaya"),
+    "te":  LangSpec("te",  "Telugu",      "tel_Telu", "Prakash"),
+    "bn":  LangSpec("bn",  "Bengali",     "ben_Beng", "Arjun"),
+    "mr":  LangSpec("mr",  "Marathi",     "mar_Deva", "Sanjay"),
+    "kn":  LangSpec("kn",  "Kannada",     "kan_Knda", "Suresh"),
+    "gu":  LangSpec("gu",  "Gujarati",    "guj_Gujr", "Yash"),
+    "ml":  LangSpec("ml",  "Malayalam",   "mal_Mlym", "Anjali"),
+    "or":  LangSpec("or",  "Odia",        "ory_Orya", "Manas"),
+    "pa":  LangSpec("pa",  "Punjabi",     "pan_Guru", "Divjot"),
+    # Additional languages supported end-to-end (IndicTrans2 + Indic Parler-TTS).
+    # Quality varies — Punjabi, Kashmiri are flagged "unofficial" by Parler.
+    "as":  LangSpec("as",  "Assamese",    "asm_Beng", "Amit"),
+    "ur":  LangSpec("ur",  "Urdu",        "urd_Arab", "Aman"),
+    "ne":  LangSpec("ne",  "Nepali",      "npi_Deva", "Amrita"),
+    "sa":  LangSpec("sa",  "Sanskrit",    "san_Deva", "Aryan"),
+    "mai": LangSpec("mai", "Maithili",    "mai_Deva", "Aman"),
+    "ks":  LangSpec("ks",  "Kashmiri",    "kas_Arab", "Aman"),
+    "sd":  LangSpec("sd",  "Sindhi",      "snd_Deva", "Aman"),
+    "brx": LangSpec("brx", "Bodo",        "brx_Deva", "Bikram"),
+    "doi": LangSpec("doi", "Dogri",       "doi_Deva", "Karan"),
+    "kok": LangSpec("kok", "Konkani",     "gom_Deva", "Sanjay"),
+    "mni": LangSpec("mni", "Manipuri",    "mni_Beng", "Laishram"),
+    "sat": LangSpec("sat", "Santali",     "sat_Olck", "Manas"),
 }
 
 ALL_LANG_CODES = list(LANGUAGES.keys())
+
+# What new projects get by default. Two languages keeps the editor
+# scannable; users opt in to the rest from project settings.
+DEFAULT_PROJECT_LANGS: list[str] = ["en", "hi"]
 
 PACE_PHRASES: dict[str, str] = {
     "very_slow": "speaks very slowly",

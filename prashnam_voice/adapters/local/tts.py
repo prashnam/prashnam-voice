@@ -22,6 +22,39 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+# Per-language speaker pool from the Indic Parler-TTS model card.
+# Languages without an entry fall back to `_PARLER_FALLBACK_POOL` below.
+_PARLER_SPEAKERS_BY_LANG: dict[str, tuple[str, ...]] = {
+    "en":  ("Mary", "Thoma", "Swapna", "Dinesh", "Meera", "Jatin", "Aakash",
+            "Sneha", "Kabir", "Tisha", "Chingkhei", "Thoiba", "Priya",
+            "Tarun", "Gauri", "Nisha", "Raghav", "Kavya", "Ravi", "Vikas", "Riya"),
+    "hi":  ("Rohit", "Divya", "Aman", "Rani"),
+    "ta":  ("Kavitha", "Jaya"),
+    "te":  ("Prakash", "Lalitha", "Kiran"),
+    "bn":  ("Arjun", "Aditi", "Tapan", "Rashmi", "Arnav", "Riya"),
+    "mr":  ("Sanjay", "Sunita", "Nikhil", "Radha", "Varun", "Isha"),
+    "kn":  ("Suresh", "Anu", "Chetan", "Vidya"),
+    "gu":  ("Yash", "Neha"),
+    "pa":  ("Divjot", "Gurpreet"),       # unofficial in Parler
+    "ml":  ("Anjali", "Anju", "Harish"),
+    "or":  ("Manas", "Debjani"),
+    "as":  ("Amit", "Sita", "Poonam", "Rakesh"),
+    "ne":  ("Amrita",),
+    "sa":  ("Aryan",),
+    "brx": ("Bikram", "Maya", "Kalpana"),
+    "doi": ("Karan",),
+    "mni": ("Laishram", "Ranjit"),
+    # Languages without a card-listed speaker (Konkani, Maithili, Kashmiri,
+    # Sindhi, Santali, Urdu) fall through to the generic pool.
+}
+# Speakers that perform reasonably across most Indic langs when the model
+# card doesn't publish a specific list.
+_PARLER_FALLBACK_POOL: tuple[str, ...] = (
+    "Aman", "Divya", "Rohit", "Aditi", "Sanjay", "Anjali", "Suresh",
+    "Arjun", "Manas", "Aryan",
+)
+
+
 class LocalTTS:
     name = "local-ai4bharat"
     label = "Indic Parler-TTS (local)"
@@ -61,19 +94,23 @@ class LocalTTS:
             return self._impl
 
     def voices_for(self, lang: str, cfg: dict) -> list[Voice]:
-        # Parler exposes the same speaker pool across all langs; we ship
-        # the curated default per language plus a few alternates the model
-        # card recommends. Adapter consumers are free to pass any speaker
-        # string — Parler will accept it and the description prompt does
-        # the heavy lifting.
+        # Per-language speaker pool sourced from the Indic Parler-TTS model
+        # card. Parler accepts any speaker string at the API level — the
+        # description prompt does the heavy lifting — so consumers are free
+        # to pass anything. We surface the model-card-recommended pool plus
+        # the project's chosen default voice (typically already in the pool).
         spec = LANGUAGES.get(lang)
         if not spec:
             return []
-        defaults = ["Divya", "Aditi", "Anjali", "Manasi", "Aryan",
-                    "Rohit", "Sanjay", "Suresh", "Arjun", "Yash"]
-        seen = set()
+        pool = list(_PARLER_SPEAKERS_BY_LANG.get(lang, ()))
+        if not pool:
+            # Languages with no listed speakers — fall back to a small
+            # general-purpose set that works decently across Indic langs.
+            pool = list(_PARLER_FALLBACK_POOL)
+        seen: set[str] = set()
         out: list[Voice] = []
-        for vid in [spec.voice, *defaults]:
+        # Always surface the project's configured default first.
+        for vid in [spec.voice, *pool]:
             if vid in seen:
                 continue
             seen.add(vid)

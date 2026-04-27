@@ -23,6 +23,20 @@ def test_create_and_load(tmp_path):
     assert again.langs == ["hi", "ta"]
 
 
+def test_create_defaults_to_en_plus_hi(tmp_path):
+    store = ProjectStore(tmp_path)
+    proj = store.create("New", langs=None)
+    assert proj.langs == ["en", "hi"]
+
+
+def test_create_filters_unknown_codes(tmp_path):
+    store = ProjectStore(tmp_path)
+    # Unknown codes are silently dropped; if everything's dropped, fall
+    # back to the default project langs rather than failing.
+    proj = store.create("X", langs=["xx", "yy"])
+    assert proj.langs == ["en", "hi"]
+
+
 def test_list_projects_orders_by_updated(tmp_path):
     store = ProjectStore(tmp_path)
     a = store.create("A", ["hi"])
