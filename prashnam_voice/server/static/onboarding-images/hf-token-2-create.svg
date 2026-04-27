@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 320" role="img" aria-label="HF token creation form with Read role highlighted">
+  <defs>
+    <filter id="ds2" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.08"/>
+    </filter>
+    <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c8341a"/>
+    </marker>
+  </defs>
+  <rect width="640" height="320" fill="#f9f8f4" rx="8"/>
+  <!-- Modal-style card -->
+  <g filter="url(#ds2)">
+    <rect x="80" y="40" width="480" height="240" rx="8" fill="#ffffff" stroke="#d4d0c4"/>
+    <text x="100" y="68" font-family="-apple-system,sans-serif" font-size="14" font-weight="700" fill="#1a1a18">Create new token</text>
+    <line x1="100" y1="80" x2="540" y2="80" stroke="#e6e3da"/>
+
+    <!-- Name field -->
+    <text x="100" y="104" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="#4a463e">Name</text>
+    <rect x="100" y="112" width="440" height="30" rx="4" fill="#fafaf6" stroke="#cfcabb"/>
+    <text x="112" y="131" font-family="ui-monospace,monospace" font-size="12" fill="#1a1a18">prashnam-voice</text>
+
+    <!-- Token type / role -->
+    <text x="100" y="166" font-family="-apple-system,sans-serif" font-size="11" font-weight="600" fill="#4a463e">Token type</text>
+    <!-- Three role pills, "Read" highlighted -->
+    <!-- Highlight ring around Read -->
+    <rect x="94" y="174" width="118" height="38" rx="20" fill="none" stroke="#c8341a" stroke-width="3" stroke-dasharray="4 3"/>
+    <rect x="100" y="180" width="106" height="26" rx="13" fill="#d8e0f0" stroke="#1a3a78"/>
+    <text x="153" y="197" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#1a3a78" text-anchor="middle">● Read</text>
+
+    <rect x="216" y="180" width="106" height="26" rx="13" fill="#fafaf6" stroke="#cfcabb"/>
+    <text x="269" y="197" font-family="-apple-system,sans-serif" font-size="12" fill="#7c7669" text-anchor="middle">○ Write</text>
+
+    <rect x="332" y="180" width="106" height="26" rx="13" fill="#fafaf6" stroke="#cfcabb"/>
+    <text x="385" y="197" font-family="-apple-system,sans-serif" font-size="12" fill="#7c7669" text-anchor="middle">○ Fine-grained</text>
+
+    <!-- Callout for Read -->
+    <path d="M 240 196 L 218 196" stroke="#c8341a" stroke-width="2" fill="none" marker-end="url(#ah2)"/>
+    <text x="248" y="200" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#c8341a">Pick "Read"</text>
+
+    <!-- Create button -->
+    <rect x="430" y="232" width="110" height="32" rx="16" fill="#22c55e"/>
+    <text x="485" y="253" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">Create token</text>
+  </g>
+  <!-- Step badge -->
+  <circle cx="56" cy="296" r="10" fill="#1a3a78"/>
+  <text x="56" y="300" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="74" y="300" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#1a3a78">Name it, set role to "Read", click Create</text>
+</svg>

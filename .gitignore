@@ -1,0 +1,24 @@
+.venv/
+__pycache__/
+*.egg-info/
+*.pyc
+.pytest_cache/
+
+# Runtime artefacts: user-created projects with audio, legacy generate runs,
+# install logs, OS junk, secrets.
+projects/
+output/
+install.log
+.DS_Store
+.env
+.env.*
+
+# Build / packaging
+build/
+dist/
+
+# Editor scratch
+.vscode/
+.idea/
+*.swp
+*~

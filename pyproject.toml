@@ -1,0 +1,43 @@
+[project]
+name = "prashnam-voice"
+version = "0.1.0"
+description = "Local voice-poll generator for prashnam.ai — English -> 10 Indian languages -> MP3 per item per language."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "prashnam.ai" }]
+
+dependencies = [
+  "torch>=2.4",
+  "transformers>=4.45,<5",
+  "sentencepiece",
+  "IndicTransToolkit>=1.0.0",
+  "parler-tts @ git+https://github.com/huggingface/parler-tts.git",
+  "soundfile",
+  "pydub",
+  "numpy<2.1",
+  "typer>=0.12",
+  "rich",
+  "fastapi",
+  "uvicorn[standard]",
+  "python-multipart",
+  "tqdm",
+  "requests>=2.31",
+  "num2words>=0.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "httpx"]
+
+[project.scripts]
+prashnam-voice = "prashnam_voice.cli:app"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["prashnam_voice*"]
+
+[tool.setuptools.package-data]
+"prashnam_voice.server" = ["static/*"]

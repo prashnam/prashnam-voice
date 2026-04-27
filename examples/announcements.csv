@@ -1,0 +1,10 @@
+# Sample announcement bundle.
+# Use:  prashnam-voice batch examples/announcements.csv --domain announcement
+group_id,english,name
+station-welcome,Welcome to Pune Junction.,Station welcome
+station-welcome,Please mind the gap between the train and the platform.,
+station-welcome,Have a pleasant journey.,
+
+mall-closing,The mall will close in fifteen minutes.,Mall closing
+mall-closing,Please make your way to the nearest exit.,
+mall-closing,Thank you for visiting.,

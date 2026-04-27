@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>prashnam-voice — setup</title>
+  <style>
+    /* CHUNA palette — same as the running app. */
+    :root {
+      --bg: #f9f8f4;
+      --card: #ffffff;
+      --row: #efeeea;
+      --line: #e6e3da;
+      --line-strong: #cfcabb;
+      --ink: #1a1a18;
+      --ink-2: #4a463e;
+      --muted: #7c7669;
+      --brand: #c8341a;
+      --brand-soft: #f5d8cf;
+      --accent: #1a3a78;
+      --accent-fg: #ffffff;
+      --accent-soft: #d8e0f0;
+      --good: #4a6b2a;
+      --good-bg: #e3eed5;
+      --warn: #8a4a14;
+      --warn-bg: #f6e4cc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+      margin: 0; padding: 32px 16px 64px;
+      background: var(--bg); color: var(--ink); line-height: 1.45;
+    }
+    .wrap { max-width: 640px; margin: 0 auto; }
+
+    .brand-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 6px;
+    }
+    .brand-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--brand);
+    }
+    h1 {
+      margin: 0; font-size: 22px; font-weight: 700;
+      letter-spacing: -0.01em; color: var(--brand);
+    }
+    .tagline { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
+
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600;
+      padding: 4px 10px; border-radius: 999px;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      background: var(--row); color: var(--ink-2);
+      border: 1px solid var(--line);
+    }
+    .status-pill.waiting { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-bg); }
+    .status-pill.ok { background: var(--good-bg); color: var(--good); border-color: var(--good-bg); }
+    .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .status-pill.waiting .dot { animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50%      { opacity: 1; }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin: 14px 0;
+    }
+    .card h2 {
+      margin: 0 0 4px;
+      font-size: 15px; font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .card .num {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--row); color: var(--ink-2);
+      font-size: 12px; font-weight: 700;
+    }
+    .card.done .num { background: var(--good-bg); color: var(--good); }
+    .card.done .num::after { content: "✓"; }
+    .card.done .num span { display: none; }
+    .card p { margin: 6px 0; color: var(--ink-2); font-size: 14px; }
+    .card pre {
+      background: var(--row); border-radius: 6px;
+      padding: 10px 12px;
+      font-family: ui-monospace, "SF Mono", monospace;
+      font-size: 12px; color: var(--ink);
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+    .card code {
+      font-family: ui-monospace, "SF Mono", monospace;
+      background: var(--row); padding: 1px 5px; border-radius: 3px;
+      font-size: 90%;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    a.button, button {
+      display: inline-flex; align-items: center; gap: 6px;
+      cursor: pointer; font-size: 13px; font-family: inherit;
+      padding: 7px 14px; border-radius: 6px;
+      border: 1px solid var(--line-strong);
+      background: var(--card); color: var(--ink);
+      text-decoration: none;
+    }
+    a.button.primary, button.primary {
+      background: var(--accent); color: var(--accent-fg);
+      border-color: var(--accent);
+    }
+    a.button.primary:hover, button.primary:hover { background: #15306a; border-color: #15306a; }
+    a.button.ghost { background: var(--card); }
+    a.button.ghost:hover { background: var(--row); }
+
+    .open-app {
+      margin-top: 24px;
+      padding: 18px 20px;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      display: none;
+    }
+    .open-app.show { display: block; }
+    .open-app h2 { margin: 0 0 4px; color: var(--accent); }
+    .open-app a.button.primary { font-size: 14px; padding: 10px 18px; }
+
+    footer {
+      margin-top: 32px;
+      font-size: 12px; color: var(--muted); text-align: center;
+    }
+    footer a { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand-row">
+      <span class="brand-dot"></span>
+      <h1>prashnam-voice</h1>
+    </div>
+    <p class="tagline">
+      Local English → Indian-language poll TTS. Setup is two clicks.
+    </p>
+
+    <div id="status">
+      <span id="status-pill" class="status-pill waiting"><span class="dot"></span><span id="status-text">Checking for server…</span></span>
+    </div>
+
+    <section id="step1" class="card">
+      <h2><span class="num"><span>1</span></span> Install Python 3.11</h2>
+      <p>
+        prashnam-voice is a Python application. Get the official <strong>3.11</strong>
+        installer below — newer Python releases (3.13, 3.14) often lack prebuilt
+        wheels for the ML libraries we rely on, so install fails. 3.11 is rock solid.
+      </p>
+      <div class="actions">
+        <a class="button primary" href="https://www.python.org/downloads/release/python-3119/" target="_blank" rel="noopener">Download Python 3.11 →</a>
+      </div>
+      <p style="font-size:12px; color:var(--muted); margin-top:8px;">
+        On the page that opens, scroll to <em>Files</em> and pick:
+        <strong>macOS 64-bit universal2 installer</strong>,
+        <strong>Windows installer (64-bit)</strong>, or your Linux distro's package.
+      </p>
+    </section>
+
+    <section id="step2" class="card">
+      <h2><span class="num"><span>2</span></span> Run <code>install.py</code></h2>
+      <p>
+        Once Python is installed, the next step is one file: <code>install.py</code>.
+        It creates a virtual environment, installs dependencies, and starts the
+        local server. Re-running it just updates and restarts.
+      </p>
+      <p>
+        <strong>macOS</strong> — double-click <code>install.py</code> in Finder. Python
+        Launcher (installed by python.org) opens it in Terminal.
+      </p>
+      <p>
+        <strong>Windows</strong> — double-click <code>install.py</code> in Explorer.
+        The Python Launcher (<code>py.exe</code>) runs it in a console window.
+      </p>
+      <p>
+        <strong>Linux</strong> (or anywhere via terminal) — open a terminal in this
+        folder and run <code>python3 install.py</code>.
+      </p>
+      <p>
+        Keep the window open while you use the app — closing it stops the server.
+        First run downloads ~500 MB of dependencies; subsequent runs are fast.
+      </p>
+      <details>
+        <summary style="cursor:pointer; font-size:13px; color:var(--muted);">Double-click opened a text editor?</summary>
+        <p style="font-size:13px;">
+          That means your system isn't associating <code>.py</code> with Python.
+          Open a terminal in this folder and run <code>python3 install.py</code>
+          instead. (On macOS, the python.org installer should have set this up;
+          if you used Homebrew or pyenv, the terminal route is the way.)
+        </p>
+      </details>
+    </section>
+
+    <section id="step3" class="card">
+      <h2><span class="num"><span>3</span></span> Open the app</h2>
+      <p>
+        Once the server is running on this machine, this page detects it automatically and
+        shows the link below. (You can also bookmark
+        <code>http://localhost:8765</code> directly.)
+      </p>
+    </section>
+
+    <section id="open" class="open-app">
+      <h2>✓ Server detected</h2>
+      <p id="open-detail"></p>
+      <a class="button primary" id="open-link" href="http://localhost:8765">Open prashnam-voice →</a>
+    </section>
+
+    <footer>
+      Bootstrap page. Source: <a href="https://github.com/" target="_blank" rel="noopener">prashnam-voice</a>.
+    </footer>
+  </div>
+
+  <script>
+    // Poll the local server's health endpoint. CORS is allowed wide-open
+    // by the server (it only binds to localhost). On `file://` origins,
+    // Chrome/Firefox/Safari permit fetches to localhost without preflight
+    // for simple GET requests.
+    const HEALTH_URL = "http://localhost:8765/api/health";
+    const APP_URL = "http://localhost:8765/";
+    const ONBOARDING_URL = "http://localhost:8765/onboarding";
+    const POLL_MS = 2000;
+
+    const $ = (id) => document.getElementById(id);
+    let lastState = null;     // "down" | "running"
+
+    async function poll() {
+      let resp = null;
+      try {
+        const r = await fetch(HEALTH_URL, { cache: "no-store" });
+        if (r.ok) resp = await r.json();
+      } catch { /* network error == not running */ }
+
+      if (resp && resp.status === "ok") {
+        showRunning(resp);
+      } else {
+        showDown();
+      }
+    }
+
+    function showDown() {
+      if (lastState === "down") return;
+      lastState = "down";
+      const pill = $("status-pill");
+      pill.className = "status-pill waiting";
+      $("status-text").textContent = "Waiting for server…";
+      $("open").classList.remove("show");
+      $("step1").classList.remove("done");
+      $("step2").classList.remove("done");
+      $("step3").classList.remove("done");
+    }
+
+    function showRunning(payload) {
+      if (lastState === "running") return;
+      lastState = "running";
+      const pill = $("status-pill");
+      pill.className = "status-pill ok";
+      pill.innerHTML = `<span class="dot"></span>Server running · v${payload.version}`;
+      $("step1").classList.add("done");
+      $("step2").classList.add("done");
+      $("step3").classList.add("done");
+
+      const target = payload.onboarded ? APP_URL : ONBOARDING_URL;
+      const link = $("open-link");
+      link.href = target;
+      $("open-detail").textContent = payload.onboarded
+        ? "All set. Open the app to start a project."
+        : "First-time setup is needed. We'll guide you through it.";
+      $("open").classList.add("show");
+    }
+
+    poll();
+    setInterval(poll, POLL_MS);
+  </script>
+</body>
+</html>

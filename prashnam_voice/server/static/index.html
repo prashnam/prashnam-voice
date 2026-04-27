@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>prashnam-voice</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a href="#/" class="brand">prashnam-voice</a>
+    <span class="sub" id="topbar-sub">Local English → Indian-language poll TTS</span>
+    <a href="/docs" class="topbar-link" title="Open the documentation viewer">Docs</a>
+    <button id="help-btn" class="topbar-help" type="button" title="Help" aria-label="Help">?</button>
+    <span class="palette-credit" title="Palette: चूना · rangrez">चूना</span>
+  </header>
+
+  <main id="app"></main>
+
+  <dialog id="enable-rotations-dialog" class="modal">
+    <form method="dialog">
+      <h2>Enable option-order rotations</h2>
+      <p class="muted small">
+        Generate the same poll with several shuffled option orderings — useful
+        for neutralizing primacy / recency bias. The option text stays the
+        same across rotations; only the "press {n}" number changes.
+      </p>
+      <label class="block">
+        <span>How many rotations?</span>
+        <input type="number" id="enable-rot-count" min="2" max="10" value="3" required />
+      </label>
+      <label class="block inline-checkbox">
+        <input type="checkbox" id="enable-rot-nota" checked />
+        <span><strong>Mark the last option as NOTA</strong> (always pinned to the last position; never shuffles).</span>
+      </label>
+      <p class="muted small">
+        You can override the lock per-option afterwards via the 🔒 pill on each
+        option, and reshuffle anytime from settings.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="enable-rot-cancel">Cancel</button>
+        <button type="submit" class="primary" value="ok">Enable rotations</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog" class="modal">
+    <article>
+      <h2 id="confirm-title">Confirm</h2>
+      <p id="confirm-body" class="muted small"></p>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="confirm-cancel">Cancel</button>
+        <button type="button" class="primary" id="confirm-ok">Confirm</button>
+      </div>
+    </article>
+  </dialog>
+
+  <div id="snackbar" class="snackbar" hidden></div>
+
+  <dialog id="help-dialog" class="modal modal-wide">
+    <article id="help-body">
+      <h2>Quick start</h2>
+      <p class="muted small">prashnam-voice is a local English → Indian-language poll TTS. Audio + project state lives in this folder.</p>
+      <ol class="help-list">
+        <li><strong>Create a project.</strong> Pick a type — <em>Poll</em> (1 question + N options) or <em>Announcement</em> (flat body segments).</li>
+        <li><strong>Type the English text</strong> in any segment. After 5 seconds of no typing, prashnam-voice translates and synthesizes audio in every selected language.</li>
+        <li><strong>Listen and re-roll.</strong> Each language cell has its own audio player and ⟳ button. Use the takes dropdown to switch between previous attempts — the model is non-deterministic, so a re-roll often improves a clip.</li>
+        <li><strong>Pacing &amp; voices</strong> live in Project Settings. Per-language overrides win over the project default.</li>
+        <li><strong>Pronunciation lexicon</strong> in Settings fixes proper nouns: <code>BJP=bee jay pee</code> per line. Per-language overrides take precedence.</li>
+        <li><strong>Templates</strong> wrap each segment with the polling preamble and option-numbering. Toggle the preset pill on a segment to opt out for that one.</li>
+        <li><strong>Bulk import.</strong> "Import CSV…" on the project list lets you create dozens of projects from a spreadsheet.</li>
+      </ol>
+
+      <h2>Where things live</h2>
+      <ul class="help-list">
+        <li><code>./projects/&lt;id&gt;/project.json</code> — segments, translations, settings, pointers to current takes.</li>
+        <li><code>./projects/&lt;id&gt;/audio/&lt;seg&gt;/&lt;lang&gt;/&lt;attempt&gt;.mp3</code> — every regen attempt is kept; nothing is overwritten.</li>
+        <li><code>~/.config/prashnam-voice/config.json</code> — adapter selection (local / Sarvam) + API keys.</li>
+        <li><code>~/.cache/prashnam-voice/audio/</code> — content-addressed audio cache.</li>
+      </ul>
+
+      <h2>Reset onboarding</h2>
+      <p class="muted small">If you want to switch engines later (e.g. local → Sarvam, or vice-versa), open <code>~/.config/prashnam-voice/config.json</code> and set <code>onboarded</code> to <code>false</code>, then reload — the wizard runs again.</p>
+
+      <h2>More</h2>
+      <ul class="help-list">
+        <li><a href="/docs#rest-api.md">REST API reference</a> — every endpoint with request / response shapes.</li>
+        <li><a href="/docs#python-api.md">Python embedding API</a> — for using <code>prashnam_voice</code> in your own code.</li>
+        <li><a href="/docs#PLAN.md">Project history &amp; roadmap</a> (PLAN.md).</li>
+        <li><a href="/docs#guide/README.md">Visual guide</a> — screenshots of every major view.</li>
+        <li>Sample CSVs → <code>./examples/</code></li>
+      </ul>
+
+      <div class="modal-actions">
+        <button type="button" class="primary" id="help-close-btn">Got it</button>
+      </div>
+    </article>
+  </dialog>
+
+  <dialog id="import-csv-dialog" class="modal">
+    <form method="dialog" id="import-csv-form">
+      <h2>Import projects from CSV</h2>
+      <p class="muted small">
+        Bulk-create polls or announcements from a CSV. The file's <code>group_id</code>
+        column groups rows into projects.
+      </p>
+      <fieldset>
+        <legend>Type</legend>
+        <label class="inline"><input type="radio" name="import-domain" value="poll" checked /> Poll</label>
+        <label class="inline"><input type="radio" name="import-domain" value="announcement" /> Announcement</label>
+      </fieldset>
+      <details>
+        <summary class="muted small">CSV schema reference</summary>
+        <pre class="csv-schema"># poll
+group_id,type,english
+poll1,question,Who will win the election?
+poll1,option,Party A
+poll1,option,Party B
+
+# announcement
+group_id,english
+ann1,Welcome to the meeting
+ann1,Please remain seated</pre>
+        <p class="muted small">Optional columns: <code>name</code> (project name), <code>langs</code> (pipe-separated; e.g. <code>hi|ta|en</code>).</p>
+      </details>
+      <label class="block">
+        <span>CSV file</span>
+        <input type="file" id="import-csv-file" accept=".csv,text/csv" required />
+      </label>
+      <div id="import-csv-result" hidden></div>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="import-csv-cancel">Cancel</button>
+        <button type="submit" class="primary" value="ok">Import</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="new-project-dialog" class="modal">
+    <form method="dialog" id="new-project-form">
+      <h2>New project</h2>
+      <label class="block">
+        <span>Project name</span>
+        <input type="text" id="new-proj-name" required maxlength="80" autocomplete="off" />
+      </label>
+      <fieldset id="new-proj-domain-fs">
+        <legend>Type</legend>
+        <div id="new-proj-domain-options"></div>
+      </fieldset>
+      <p class="muted small">You can change languages, paces, templates, and lexicon after creating.</p>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="new-proj-cancel">Cancel</button>
+        <button type="submit" class="primary" value="ok">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <aside id="queue-panel" class="queue-panel" aria-hidden="true">
+    <button id="queue-handle" class="queue-handle" type="button" title="Show queue">
+      <span class="qh-label">Queue</span>
+      <span class="qh-count" id="queue-count" hidden>0</span>
+    </button>
+    <header class="queue-head">
+      <h3>Queue</h3>
+      <button id="queue-close" class="ghost" type="button" aria-label="Close">✕</button>
+    </header>
+    <ul id="queue-list" class="queue-list"></ul>
+    <p id="queue-empty" class="muted queue-empty">Queue is empty.</p>
+  </aside>
+
+  <!-- Templates ----------------------------------------------- -->
+  <template id="tpl-project-list">
+    <section class="container">
+      <div class="row-between">
+        <h2>Projects</h2>
+        <div class="actions">
+          <button class="ghost" id="import-csv">Import CSV…</button>
+          <button class="primary" id="new-project">+ New project</button>
+        </div>
+      </div>
+      <ul id="projects" class="project-list"></ul>
+      <p class="empty" id="projects-empty" hidden>No projects yet. Create one or import a CSV.</p>
+    </section>
+  </template>
+
+  <template id="tpl-project-editor">
+    <section class="container project">
+      <div class="row-between">
+        <div>
+          <a href="#/" class="back">← All projects</a>
+          <h2 id="proj-name" class="name editable" contenteditable="false"></h2>
+          <div class="meta" id="proj-meta"></div>
+        </div>
+        <div class="actions">
+          <button id="enable-rotations" class="ghost" hidden>Enable rotations</button>
+          <button id="open-folder" class="ghost">Open folder</button>
+          <a id="download-zip" class="button ghost" href="#">Download .zip</a>
+          <button id="delete-project" class="ghost danger">Delete</button>
+        </div>
+      </div>
+
+      <details class="settings" id="settings">
+        <summary>Project settings</summary>
+        <div class="settings-grid">
+          <label class="inline">
+            <span>Name</span>
+            <input id="setting-name" type="text" />
+          </label>
+          <label class="inline">
+            <span>Default pace</span>
+            <select id="setting-pace"></select>
+          </label>
+          <fieldset>
+            <legend>Languages and per-language pace</legend>
+            <div id="setting-langs"></div>
+            <p class="muted small">Tick a language to include it in this project. Pace overrides the project default for that language only.</p>
+          </fieldset>
+          <fieldset class="full-row" id="rotations-fieldset" hidden>
+            <legend>Option-order rotations</legend>
+            <p class="muted small">
+              Generate multiple shuffled orderings of the options to neutralize
+              primacy / recency bias. The "press {n}" numbering follows the
+              shuffle; an option's <em>english</em> stays the same.
+            </p>
+            <div class="rotation-controls">
+              <label class="inline">
+                <span>Count</span>
+                <input type="number" id="setting-rotation-count" min="1" max="10" />
+              </label>
+              <label class="inline">
+                <span>Seed</span>
+                <input type="number" id="setting-rotation-seed" placeholder="random" />
+              </label>
+              <button type="button" id="setting-reshuffle" class="ghost">Reshuffle now</button>
+              <button type="button" id="setting-disable-rotations" class="ghost danger">Disable rotations</button>
+            </div>
+            <table id="rotations-table" class="rotations-table">
+              <thead>
+                <tr><th>Rotation</th><th>Order</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </fieldset>
+
+          <fieldset class="full-row">
+            <legend>Pronunciation lexicon</legend>
+            <p class="muted small">
+              One <code>KEY=value</code> per line. Substitutes whole-word occurrences
+              before translation. Use the global tab for fixes that apply to every
+              language; per-language overrides win for that language only.
+              Saving rewrites all cached audio (you'll need to regenerate).
+            </p>
+            <label class="block">
+              <span>Global <em class="muted">(applies to every language; e.g. <code>BJP=bee jay pee</code>)</em></span>
+              <textarea id="setting-lex-global" rows="3"
+                placeholder="BJP=bee jay pee&#10;Modi=mow-dee"></textarea>
+            </label>
+            <details>
+              <summary class="muted small">Per-language overrides</summary>
+              <div id="setting-lex-perlang"></div>
+            </details>
+          </fieldset>
+
+          <fieldset class="full-row">
+            <legend>Templates</legend>
+            <label class="block">
+              <span>Question wrapper <em class="muted">(use {body})</em></span>
+              <textarea id="setting-question-tmpl" rows="2"></textarea>
+            </label>
+            <label class="block">
+              <span>Option wrapper <em class="muted">(use {body} and {n} for the option number)</em></span>
+              <textarea id="setting-option-tmpl" rows="2"></textarea>
+            </label>
+            <p class="muted">
+              Templates wrap each segment when its preset pill is on.
+              Changing a template invalidates cached audio for every segment using it
+              — you'll need to regenerate.
+            </p>
+          </fieldset>
+        </div>
+        <div class="actions"><button id="save-settings" class="primary">Save settings</button>
+          <span id="settings-status" class="muted"></span></div>
+      </details>
+
+      <div id="segments"></div>
+
+      <div class="actions add-bar">
+        <button id="add-option" class="primary">+ Add option</button>
+        <span class="muted" id="autosave-status"></span>
+      </div>
+    </section>
+  </template>
+
+  <template id="tpl-segment-card">
+    <article class="seg" data-seg-id="">
+      <header class="seg-head">
+        <span class="badge"></span>
+        <span class="dirty-dot" title="Unsaved changes" hidden>●</span>
+        <button class="preset-pill" type="button" hidden title="Toggle preset wrapper for this segment">
+          <span class="dot"></span><span class="label">Preset</span>
+        </button>
+        <button class="lock-pill" type="button" hidden title="Pin this option to the last position in every rotation (NOTA)">
+          <span class="dot">🔒</span><span class="label">Lock at end</span>
+        </button>
+        <span class="seg-status muted"></span>
+        <button class="ghost regen-row" title="Regenerate this segment in all selected languages">⟳ all</button>
+        <button class="ghost danger del-seg" title="Delete this segment">✕</button>
+      </header>
+      <textarea class="seg-en" rows="2" placeholder="Type English text…"></textarea>
+      <div class="effective-preview muted" hidden></div>
+      <div class="lang-grid"></div>
+    </article>
+  </template>
+
+  <template id="tpl-lang-cell">
+    <div class="cell" data-lang="">
+      <div class="cell-head">
+        <span class="lang-name"></span>
+        <span class="pill"></span>
+        <button class="ghost regen-cell" title="Regenerate this cell">⟳</button>
+      </div>
+      <div class="translation muted" data-role="translation">…</div>
+      <audio class="player" controls preload="none" hidden></audio>
+      <details class="takes" hidden>
+        <summary>Takes</summary>
+        <ul class="take-list"></ul>
+      </details>
+    </div>
+  </template>
+
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>

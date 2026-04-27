@@ -1,0 +1,191 @@
+/* Onboarding wizard styles. Sits on top of the shared CHUNA palette
+ * defined in style.css. */
+
+body.onboarding-page main {
+  /* Override the default `main` padding from style.css for the wizard. */
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+.onboarding-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .onboarding-shell {
+    grid-template-columns: 1fr;
+  }
+  .onboarding-rail { display: none; }
+}
+
+.onboarding-rail {
+  position: sticky;
+  top: 80px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.onboarding-rail ol {
+  list-style: none;
+  margin: 0; padding: 0;
+  counter-reset: rail-step;
+  display: flex; flex-direction: column;
+  gap: 10px;
+}
+.onboarding-rail li {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px; color: var(--muted);
+  counter-increment: rail-step;
+}
+.onboarding-rail li::before {
+  content: counter(rail-step);
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--row);
+  color: var(--ink-2);
+  font-size: 12px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.onboarding-rail li.current::before {
+  background: var(--accent); color: var(--accent-fg);
+}
+.onboarding-rail li.done::before {
+  content: "✓";
+  background: var(--good-bg); color: var(--good);
+}
+.onboarding-rail li.current { color: var(--ink); font-weight: 600; }
+.onboarding-rail li.done { color: var(--ink-2); }
+
+.onboarding-stage {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+  min-height: 320px;
+}
+.onboarding-stage h2 {
+  margin: 0 0 8px; font-size: 18px; font-weight: 600;
+}
+.onboarding-stage p {
+  margin: 6px 0; color: var(--ink-2); font-size: 14px;
+}
+.onboarding-stage .actions {
+  margin-top: 16px;
+}
+.onboarding-stage label.block { display: block; margin: 12px 0 6px; }
+.onboarding-stage label.block > span {
+  display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 4px;
+}
+.onboarding-stage input[type="text"],
+.onboarding-stage input[type="password"] {
+  width: 100%; max-width: 480px;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 13px;
+}
+
+.engine-options {
+  display: flex; flex-direction: column; gap: 10px;
+  margin: 16px 0 8px;
+}
+.engine-card {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  background: var(--bg);
+  transition: border-color 0.12s, background 0.12s;
+}
+.engine-card:hover { border-color: var(--line-strong); background: var(--card); }
+.engine-card input[type="radio"] {
+  align-self: start;
+  margin-top: 2px;
+}
+.engine-card:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.engine-card strong { font-size: 14px; }
+.engine-card p { margin: 4px 0 0; }
+
+.badge-info {
+  font-size: 10px; padding: 1px 6px; border-radius: 999px;
+  background: var(--good-bg); color: var(--good);
+  letter-spacing: 0.04em; text-transform: uppercase; font-weight: 700;
+  margin-left: 4px;
+}
+
+.probe-result {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  white-space: pre-wrap;
+}
+.probe-result.ok    { background: var(--good-bg);  border-color: var(--good-bg);  color: var(--good); }
+.probe-result.warn  { background: var(--warn-bg);  border-color: var(--warn-bg);  color: var(--warn); }
+.probe-result.error { background: var(--bad-bg);   border-color: var(--bad-bg);   color: var(--danger); }
+.probe-result ul { margin: 6px 0 0 16px; padding: 0; }
+.probe-result li { margin: 2px 0; }
+.probe-result a { color: inherit; text-decoration: underline; }
+.probe-result strong { font-weight: 700; }
+
+.muted.small, .small { font-size: 12px; }
+
+/* ----------------------------------------------------------------------- */
+/* Onboarding figures (HF screenshots / SVG illustrations)                  */
+/* ----------------------------------------------------------------------- */
+
+.onb-figure {
+  margin: 14px 0;
+  padding: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.onb-figure img {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  background: #fff;
+}
+.onb-figure figcaption {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--ink-2);
+  border-top: 1px solid var(--line);
+  background: var(--card);
+}
+.onb-figure figcaption code {
+  background: var(--row);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 92%;
+}
+.onb-figure figcaption strong { color: var(--accent); }
+
+/* Numbered list of figure-steps in the token panel.
+   Hide the default ol marker since each figcaption already calls out
+   "Step 1 / 2 / 3" explicitly. */
+.onb-steplist {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.onb-steplist > li { margin: 0; padding: 0; }

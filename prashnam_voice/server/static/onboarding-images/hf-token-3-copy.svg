@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 320" role="img" aria-label="HF token result with copy button highlighted">
+  <defs>
+    <filter id="ds3" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.08"/>
+    </filter>
+    <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c8341a"/>
+    </marker>
+  </defs>
+  <rect width="640" height="320" fill="#f9f8f4" rx="8"/>
+  <g filter="url(#ds3)">
+    <rect x="40" y="40" width="560" height="200" rx="8" fill="#ffffff" stroke="#d4d0c4"/>
+    <!-- Success banner -->
+    <rect x="40" y="40" width="560" height="40" rx="8" fill="#dcfce7"/>
+    <text x="60" y="65" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#166534">✓ Save your access token</text>
+    <text x="60" y="106" font-family="-apple-system,sans-serif" font-size="11" fill="#7c7669">This token will only be shown once. Copy it now.</text>
+    <!-- Token field -->
+    <rect x="60" y="124" width="440" height="36" rx="4" fill="#fafaf6" stroke="#cfcabb"/>
+    <text x="72" y="148" font-family="ui-monospace,monospace" font-size="13" fill="#1a1a18">hf_xxxxxxxxxxxxxxxxxxxxxx</text>
+    <!-- Copy button (HIGHLIGHTED) -->
+    <rect x="514" y="118" width="68" height="48" rx="22" fill="none" stroke="#c8341a" stroke-width="3" stroke-dasharray="4 3"/>
+    <rect x="520" y="124" width="56" height="36" rx="4" fill="#1a3a78"/>
+    <text x="548" y="146" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">Copy</text>
+    <text x="548" y="156" font-family="-apple-system,sans-serif" font-size="11" fill="#ffffff" text-anchor="middle">📋</text>
+    <!-- Callout -->
+    <path d="M 514 144 L 470 196" stroke="#c8341a" stroke-width="2" fill="none" marker-end="url(#ah3)"/>
+    <text x="358" y="206" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#c8341a">Copy and paste below</text>
+  </g>
+  <!-- Step badge -->
+  <circle cx="56" cy="296" r="10" fill="#1a3a78"/>
+  <text x="56" y="300" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="74" y="300" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#1a3a78">Copy the token (it's shown once) — paste it here.</text>
+</svg>

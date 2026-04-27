@@ -1,0 +1,19 @@
+# Sample polls bundle — three polls in one file.
+# Use:  prashnam-voice batch examples/polls.csv --domain poll --langs hi,ta,bn,en
+group_id,type,english,name,langs
+2026-elections,question,Who will win the upcoming general election?,2026 General Election,
+2026-elections,option,The BJP-led NDA,,
+2026-elections,option,The INDIA alliance,,
+2026-elections,option,A coalition outside both,,
+2026-elections,option,No clear majority,,
+
+cm-haryana,question,Who should be the next Chief Minister of Haryana?,Haryana CM,hi|en
+cm-haryana,option,The current CM,,
+cm-haryana,option,A new face from the same party,,
+cm-haryana,option,The opposition leader,,
+
+economy-2026,question,How would you rate the economy this year?,Economy 2026,
+economy-2026,option,Much better than last year,,
+economy-2026,option,Slightly better,,
+economy-2026,option,About the same,,
+economy-2026,option,Worse,,

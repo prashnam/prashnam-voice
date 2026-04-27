@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>prashnam-voice — setup</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/onboarding.css" />
+</head>
+<body class="onboarding-page">
+  <header class="topbar">
+    <a href="/" class="brand">prashnam-voice</a>
+    <span class="sub">First-time setup</span>
+  </header>
+
+  <main class="onboarding-shell">
+    <aside class="onboarding-rail">
+      <ol id="rail-steps"></ol>
+    </aside>
+    <section class="onboarding-stage" id="stage"></section>
+  </main>
+
+  <!-- Step templates ----------------------------------------------------- -->
+
+  <template id="step-pick-engine">
+    <h2>Pick how you want to generate audio</h2>
+    <p class="muted">You can switch later from Project Settings.</p>
+    <div class="engine-options">
+      <label class="engine-card">
+        <input type="radio" name="engine" value="local" checked />
+        <div>
+          <strong>Run on this computer</strong> <span class="badge-info">recommended</span>
+          <p class="muted">Free, private, offline after a one-time ~4.5 GB model download.
+            Needs a Hugging Face account (one minute) to fetch the AI4Bharat models.</p>
+        </div>
+      </label>
+      <label class="engine-card">
+        <input type="radio" name="engine" value="sarvam" />
+        <div>
+          <strong>Sarvam.ai (cloud)</strong>
+          <p class="muted">Indic-first cloud TTS — pay per call. No big download.
+            You'll need an API key from dashboard.sarvam.ai.</p>
+        </div>
+      </label>
+    </div>
+    <div class="actions"><button class="primary" id="btn-pick-next">Continue →</button></div>
+  </template>
+
+  <template id="step-hf-account">
+    <h2>Sign in to Hugging Face</h2>
+    <p>The AI4Bharat models are hosted on Hugging Face and gated by a one-click
+      "Agree and access" form. You'll need a free HF account.</p>
+    <div class="actions">
+      <a class="button primary" target="_blank" rel="noopener" href="https://huggingface.co/join">Create / sign in →</a>
+    </div>
+    <p class="muted small">When you're signed in (you can see your avatar top-right at huggingface.co), come back here.</p>
+    <div class="actions">
+      <button class="ghost" data-back>← Back</button>
+      <button class="primary" data-next>I'm signed in →</button>
+    </div>
+  </template>
+
+  <template id="step-hf-tos-it2">
+    <h2>Accept the IndicTrans2 licence</h2>
+    <p>Open the model page below. The model is gated; you'll see a banner with a
+      green <strong>Agree and access repository</strong> button. Click it.</p>
+    <figure class="onb-figure">
+      <img src="/static/onboarding-images/hf-tos-button.png"
+           alt="Hugging Face model page showing the green 'Agree and access repository' button" />
+      <figcaption>What the gated-repo banner looks like.</figcaption>
+    </figure>
+    <div class="actions">
+      <a class="button primary" target="_blank" rel="noopener"
+         href="https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M">Open IndicTrans2 page →</a>
+    </div>
+    <div class="actions">
+      <button class="ghost" data-back>← Back</button>
+      <button class="primary" data-next>I accepted →</button>
+    </div>
+  </template>
+
+  <template id="step-hf-tos-parler">
+    <h2>Accept the Indic Parler-TTS licence</h2>
+    <p>Same gate as the previous step: a green <strong>Agree and access repository</strong>
+      button at the top of the model page.</p>
+    <figure class="onb-figure">
+      <img src="/static/onboarding-images/hf-tos-button.png"
+           alt="Hugging Face model page showing the green 'Agree and access repository' button" />
+      <figcaption>Look for the same banner on the Parler-TTS page.</figcaption>
+    </figure>
+    <div class="actions">
+      <a class="button primary" target="_blank" rel="noopener"
+         href="https://huggingface.co/ai4bharat/indic-parler-tts">Open Indic Parler-TTS page →</a>
+    </div>
+    <div class="actions">
+      <button class="ghost" data-back>← Back</button>
+      <button class="primary" data-next>I accepted →</button>
+    </div>
+  </template>
+
+  <template id="step-hf-token">
+    <h2>Generate a read token</h2>
+    <p>A <strong>Read</strong> access token lets us download the gated models on your behalf.
+      Tokens are stored locally in <code>~/.config/prashnam-voice/config.json</code> — they
+      don't leave this machine.</p>
+
+    <div class="actions">
+      <a class="button primary" target="_blank" rel="noopener"
+         href="https://huggingface.co/settings/tokens">Open token settings →</a>
+    </div>
+
+    <ol class="onb-steplist">
+      <li>
+        <figure class="onb-figure">
+          <img src="/static/onboarding-images/hf-token-1-settings.png"
+               alt="Hugging Face Access Tokens page with the 'Create new token' button" />
+          <figcaption><strong>Step 1.</strong> Open Access Tokens, click <em>+ Create new token</em>.</figcaption>
+        </figure>
+      </li>
+      <li>
+        <figure class="onb-figure">
+          <img src="/static/onboarding-images/hf-token-2-create.png"
+               alt="Token creation form with 'Read' role selected" />
+          <figcaption><strong>Step 2.</strong> Pick <em>Read</em>, name it (e.g. <code>prashnam-voice</code>),
+            click <em>Create token</em>.</figcaption>
+        </figure>
+      </li>
+      <li>
+        <figure class="onb-figure">
+          <img src="/static/onboarding-images/hf-token-3-copy.svg"
+               alt="Token reveal screen with copy button highlighted" />
+          <figcaption><strong>Step 3.</strong> Copy the <code>hf_…</code> token — HF shows it only once — and paste it below.</figcaption>
+        </figure>
+      </li>
+    </ol>
+
+    <label class="block">
+      <span>Paste the token (starts with <code>hf_</code>)</span>
+      <input type="password" id="hf-token" autocomplete="off" placeholder="hf_xxxxxxxxxxxxxxxxx" />
+    </label>
+    <div class="actions">
+      <button class="ghost" data-back>← Back</button>
+      <button class="primary" id="btn-test-hf">Test connection</button>
+    </div>
+    <div id="hf-result" class="probe-result" hidden></div>
+    <div class="actions">
+      <button class="primary" data-next id="btn-hf-next" disabled>Finish setup →</button>
+    </div>
+  </template>
+
+  <template id="step-sarvam-account">
+    <h2>Sign in to Sarvam.ai</h2>
+    <p>You'll need an account on dashboard.sarvam.ai (Google sign-in works) to generate an API key.</p>
+    <div class="actions">
+      <a class="button primary" target="_blank" rel="noopener"
+         href="https://dashboard.sarvam.ai">Open dashboard.sarvam.ai →</a>
+    </div>
+    <div class="actions">
+      <button class="ghost" data-back>← Back</button>
+      <button class="primary" data-next>I'm signed in →</button>
+    </div>
+  </template>
+
+  <template id="step-sarvam-key">
+    <h2>Generate an API key</h2>
+    <p>In the Sarvam dashboard, go to API keys → Create new key. Same key works for translate + TTS.</p>
+    <label class="block">
+      <span>Paste the key</span>
+      <input type="password" id="sarvam-key" autocomplete="off" placeholder="sk_xxxxxxxxxxxx" />
+    </label>
+    <div class="actions">
+      <button class="ghost" data-back>← Back</button>
+      <button class="primary" id="btn-test-sarvam">Test connection</button>
+    </div>
+    <div id="sarvam-result" class="probe-result" hidden></div>
+    <div class="actions">
+      <button class="primary" data-next id="btn-sarvam-next" disabled>Finish setup →</button>
+    </div>
+  </template>
+
+  <template id="step-done">
+    <h2>You're set up ✓</h2>
+    <p id="done-detail" class="muted"></p>
+    <div class="actions">
+      <a class="button primary" href="/">Open prashnam-voice →</a>
+    </div>
+  </template>
+
+  <script src="/static/onboarding.js" type="module"></script>
+</body>
+</html>

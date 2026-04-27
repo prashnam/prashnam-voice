@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 320" role="img" aria-label="Hugging Face model page with the green 'Agree and access' button highlighted">
+  <defs>
+    <filter id="ds" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="640" height="320" fill="#f9f8f4" rx="8"/>
+  <!-- Browser frame -->
+  <g filter="url(#ds)">
+    <rect x="32" y="24" width="576" height="272" rx="6" fill="#ffffff" stroke="#d4d0c4"/>
+    <rect x="32" y="24" width="576" height="32" rx="6" fill="#f0eee7"/>
+    <circle cx="48" cy="40" r="4" fill="#cfcabb"/>
+    <circle cx="62" cy="40" r="4" fill="#cfcabb"/>
+    <circle cx="76" cy="40" r="4" fill="#cfcabb"/>
+    <rect x="100" y="32" width="320" height="16" rx="3" fill="#ffffff" stroke="#e6e3da"/>
+    <text x="110" y="44" font-family="ui-monospace,monospace" font-size="10" fill="#7c7669">huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M</text>
+  </g>
+  <!-- Page content -->
+  <text x="56" y="84" font-family="-apple-system,sans-serif" font-size="14" font-weight="700" fill="#1a1a18">ai4bharat / indictrans2-en-indic-dist-200M</text>
+  <text x="56" y="102" font-family="-apple-system,sans-serif" font-size="11" fill="#7c7669">Translation model · gated</text>
+  <!-- Gated banner -->
+  <rect x="56" y="120" width="528" height="62" rx="6" fill="#fef3c7" stroke="#facc15"/>
+  <text x="72" y="142" font-family="-apple-system,sans-serif" font-size="12" font-weight="600" fill="#92400e">You need to agree to share your contact information to access this model</text>
+  <text x="72" y="158" font-family="-apple-system,sans-serif" font-size="11" fill="#92400e">By clicking, you agree to the Hugging Face terms.</text>
+  <!-- Agree button (HIGHLIGHTED) -->
+  <g>
+    <!-- highlight ring -->
+    <rect x="64" y="196" width="222" height="40" rx="22" fill="none" stroke="#c8341a" stroke-width="3" stroke-dasharray="4 3"/>
+    <rect x="72" y="200" width="206" height="32" rx="16" fill="#22c55e"/>
+    <text x="175" y="221" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">Agree and access repository</text>
+  </g>
+  <!-- Callout arrow + label -->
+  <g>
+    <path d="M 360 215 L 320 215" stroke="#c8341a" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+    <text x="368" y="219" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#c8341a">Click this</text>
+  </g>
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c8341a"/>
+    </marker>
+  </defs>
+  <!-- placeholder text below -->
+  <rect x="56" y="252" width="380" height="6" rx="2" fill="#ece9df"/>
+  <rect x="56" y="266" width="320" height="6" rx="2" fill="#ece9df"/>
+</svg>
