@@ -1,4 +1,9 @@
-"""Onboarding endpoints + HF/Sarvam test probes."""
+"""Onboarding endpoints + Sarvam test probe.
+
+The HF token / ToS probes that used to live here are gone — we now
+mirror the AI4Bharat models under naklitechie/* (public, ungated), so
+the local engine flow needs no auth and there's nothing to probe.
+"""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -7,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from prashnam_voice import app_config
-from prashnam_voice.onboarding import probe_hf_token, probe_sarvam_key
+from prashnam_voice.onboarding import probe_sarvam_key
 from prashnam_voice.server.app import build_app
 
 
@@ -31,46 +36,6 @@ def client(tmp_path):
     app_config.set_config_path(tmp_path / "config.json")
     yield TestClient(build_app(out_root=tmp_path / "out", projects_root=tmp_path / "projects"))
     app_config.set_config_path(None)
-
-
-# ---------------------------------------------------------------------------
-# HF probe
-# ---------------------------------------------------------------------------
-
-
-def test_hf_probe_ready_when_both_models_200():
-    def fake_get(url, headers=None, timeout=None):
-        return FakeResponse(200, {})
-    with patch("prashnam_voice.onboarding.requests.get", fake_get):
-        r = probe_hf_token("hf_realtoken")
-    assert r.overall == "ready"
-    assert all(m.status == "ok" for m in r.models)
-
-
-def test_hf_probe_token_invalid_on_401():
-    def fake_get(url, headers=None, timeout=None):
-        return FakeResponse(401, {})
-    with patch("prashnam_voice.onboarding.requests.get", fake_get):
-        r = probe_hf_token("hf_badtoken")
-    assert r.overall == "token_invalid"
-
-
-def test_hf_probe_models_not_accepted_on_403():
-    # First model 403 (ToS not accepted), second 200.
-    calls = {"i": 0}
-    def fake_get(url, headers=None, timeout=None):
-        calls["i"] += 1
-        return FakeResponse(403 if calls["i"] == 1 else 200, {})
-    with patch("prashnam_voice.onboarding.requests.get", fake_get):
-        r = probe_hf_token("hf_realtoken")
-    assert r.overall == "models_not_accepted"
-    needs = [m for m in r.models if m.status == "needs_acceptance"]
-    assert len(needs) == 1
-
-
-def test_hf_probe_empty_token_short_circuits():
-    r = probe_hf_token("")
-    assert r.overall == "token_invalid"
 
 
 # ---------------------------------------------------------------------------
@@ -139,14 +104,11 @@ def test_complete_onboarding_rejects_unknown_adapter(client):
     assert r.status_code == 400
 
 
-def test_test_hf_endpoint_returns_structured(client):
-    def fake_get(url, headers=None, timeout=None):
-        return FakeResponse(200, {})
-    with patch("prashnam_voice.onboarding.requests.get", fake_get):
-        r = client.post("/api/onboarding/test-hf", json={"token": "hf_t"})
-    assert r.status_code == 200
-    assert r.json()["overall"] == "ready"
-    assert isinstance(r.json()["models"], list)
+def test_test_hf_endpoint_is_gone(client):
+    # Removed in the mirror-swap: we no longer authenticate against HF for
+    # local models, so the endpoint shouldn't exist anymore.
+    r = client.post("/api/onboarding/test-hf", json={"token": "hf_t"})
+    assert r.status_code == 404
 
 
 def test_test_sarvam_endpoint_returns_structured(client):

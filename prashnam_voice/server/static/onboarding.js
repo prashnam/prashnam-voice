@@ -1,7 +1,13 @@
 // Onboarding wizard. Two parallel paths share the rail/stage layout:
 //
-//   local  → pick → hf-account → tos-it2 → tos-parler → token (test) → done
+//   local  → pick → download → done
 //   sarvam → pick → sarvam-account → sarvam-key (test) → done
+//
+// The local flow used to detour through "make an HF account → accept ToS on
+// two gated repos → paste a token", because the original AI4Bharat repos
+// were gated. We now mirror them publicly under naklitechie/* (MIT +
+// Apache-2.0 both permit redistribution), so the local flow is just engine
+// pick → background model download → done. No tokens.
 //
 // State is held in module scope; on completion we POST /api/onboarding/complete
 // to persist the choice + settings, then redirect to /.
@@ -16,13 +22,9 @@ const tpl = (id) => document.getElementById(id).content.cloneNode(true);
 
 const FLOWS = {
   local: [
-    { id: "pick",        label: "Engine"          },
-    { id: "hf-account",  label: "HF account"      },
-    { id: "tos-it2",     label: "Translator T&Cs" },
-    { id: "tos-parler",  label: "TTS T&Cs"        },
-    { id: "token",       label: "Token"           },
-    { id: "download",    label: "Download"        },
-    { id: "done",        label: "Done"            },
+    { id: "pick",        label: "Engine"   },
+    { id: "download",    label: "Download" },
+    { id: "done",        label: "Done"     },
   ],
   sarvam: [
     { id: "pick",            label: "Engine"   },
@@ -35,7 +37,6 @@ const FLOWS = {
 const state = {
   engine: "local",   // current engine selection
   step: "pick",      // current step id
-  hfToken: "",
   sarvamKey: "",
 };
 
@@ -59,10 +60,9 @@ async function api(method, url, body) {
 }
 
 const Api = {
-  testHf:    (token)   => api("POST", "/api/onboarding/test-hf", { token }),
   testSarvam:(api_key) => api("POST", "/api/onboarding/test-sarvam", { api_key }),
   complete:  (payload) => api("POST", "/api/onboarding/complete", payload),
-  startDownload: (token) => api("POST", "/api/onboarding/download-models", { token: token || null }),
+  startDownload: () => api("POST", "/api/onboarding/download-models", { token: null }),
   downloadProgress: () => api("GET", "/api/onboarding/download-progress"),
 };
 
@@ -102,10 +102,7 @@ function go(step) {
 
 function stepNode(step) {
   if (step === "pick")           return tpl("step-pick-engine");
-  if (step === "hf-account")     return tpl("step-hf-account");
-  if (step === "tos-it2")        return tpl("step-hf-tos-it2");
-  if (step === "tos-parler")     return tpl("step-hf-tos-parler");
-  if (step === "token")          return tpl("step-hf-token");
+  if (step === "download")       return tpl("step-download");
   if (step === "sarvam-account") return tpl("step-sarvam-account");
   if (step === "sarvam-key")     return tpl("step-sarvam-key");
   if (step === "done")           return tpl("step-done");
@@ -117,7 +114,7 @@ function bindStep(step) {
   document.querySelectorAll("[data-back]").forEach((b) =>
     b.addEventListener("click", () => goPrev()));
   document.querySelectorAll("[data-next]").forEach((b) => {
-    if (b.id === "btn-hf-next" || b.id === "btn-sarvam-next") return;  // handled below
+    if (b.id === "btn-sarvam-next") return;  // handled below
     b.addEventListener("click", () => goNext());
   });
 
@@ -125,19 +122,14 @@ function bindStep(step) {
     $("#btn-pick-next").addEventListener("click", () => {
       const picked = document.querySelector('input[name="engine"]:checked');
       state.engine = picked ? picked.value : "local";
-      goNext();
-    });
-  }
-
-  if (step === "token") {
-    const input = $("#hf-token");
-    if (state.hfToken) input.value = state.hfToken;
-    $("#btn-test-hf").addEventListener("click", onTestHf);
-    // For local: persist config (saves the token), then move on to the
-    // download step where the wizard streams progress.
-    $("#btn-hf-next").addEventListener("click", () => {
-      state.hfToken = input.value;
-      complete().then(() => goNext());
+      // For local: persist config now (no further input needed) and move
+      // straight to the download step. For sarvam: just advance — the
+      // sarvam-key step calls complete() once the user pastes a key.
+      if (state.engine === "local") {
+        complete().then(() => goNext()).catch(() => {});
+      } else {
+        goNext();
+      }
     });
   }
 
@@ -191,7 +183,7 @@ function bindDownloadStep() {
   });
   // Kick off the actual download. The endpoint is a no-op if a job's
   // already running, so this is safe to call on every entry into the step.
-  Api.startDownload(state.hfToken).catch(() => { /* server-side error surfaces via progress poll */ });
+  Api.startDownload().catch(() => { /* server-side error surfaces via progress poll */ });
   // Poll once immediately, then on an interval.
   pollDownload();
   _downloadPollTimer = setInterval(pollDownload, 1000);
@@ -268,39 +260,6 @@ function formatBytes(n) {
 // Probes
 // --------------------------------------------------------------------------
 
-async function onTestHf() {
-  const token = $("#hf-token").value.trim();
-  state.hfToken = token;
-  const out = $("#hf-result");
-  out.hidden = false;
-  out.className = "probe-result";
-  out.textContent = "Testing…";
-
-  let result;
-  try { result = await Api.testHf(token); }
-  catch (e) { renderProbe(out, "error", "Error: " + e.message); return; }
-
-  if (result.overall === "ready") {
-    renderProbe(out, "ok", "✓ " + (result.message || "Token works."));
-    $("#btn-hf-next").disabled = false;
-  } else if (result.overall === "models_not_accepted") {
-    const lines = (result.models || [])
-      .filter((m) => m.status === "needs_acceptance")
-      .map((m) => `<li><strong>${m.model_id}</strong> — open the model page and click <em>Agree and access</em>.</li>`)
-      .join("");
-    renderProbe(out, "warn",
-      `Token works, but you still need to accept the licence on:<ul>${lines}</ul>`,
-      true);
-    $("#btn-hf-next").disabled = true;
-  } else if (result.overall === "token_invalid") {
-    renderProbe(out, "error", "✗ " + (result.message || "Token rejected."));
-    $("#btn-hf-next").disabled = true;
-  } else {
-    renderProbe(out, "error", "✗ " + (result.message || "Unknown error."));
-    $("#btn-hf-next").disabled = true;
-  }
-}
-
 async function onTestSarvam() {
   const key = $("#sarvam-key").value.trim();
   state.sarvamKey = key;
@@ -338,12 +297,9 @@ async function complete() {
     ? {
         translator: "local-ai4bharat",
         tts: "local-ai4bharat",
-        // HF token isn't required by our local adapter (huggingface_hub picks
-        // it up from huggingface-cli login or HF_TOKEN env). We persist it on
-        // the local adapter setting bag for symmetry; the local adapter
-        // currently ignores it, but a future revision can read it to set
-        // HF_TOKEN before model download.
-        settings: { "local-ai4bharat": { hf_token: state.hfToken } },
+        // No per-adapter settings — local pulls weights from public ungated
+        // mirrors (naklitechie/*), so there's nothing for the user to configure.
+        settings: { "local-ai4bharat": {} },
       }
     : {
         translator: "sarvam",

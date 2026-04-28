@@ -1,7 +1,11 @@
 """Local adapter — wraps the on-device AI4Bharat models.
 
-Translator: ai4bharat/indictrans2-en-indic-dist-200M
-TTS:        ai4bharat/indic-parler-tts
+Translator: naklitechie/indictrans2-en-indic-dist-200M  (mirror of ai4bharat/…, MIT)
+TTS:        naklitechie/indic-parler-tts                 (mirror of ai4bharat/…, Apache-2.0)
+
+We pull from public ungated mirrors so first-run install needs no HF
+account or token. Bytes are byte-identical to the upstream AI4Bharat
+repos; see each mirror's NOTICE.md for provenance.
 
 Both run on Apple Silicon MPS in fp16 (with auto-fallback to CPU on
 probe failure). Models download lazily on first use to ~/.cache/huggingface.

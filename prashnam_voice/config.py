@@ -4,8 +4,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-TRANSLATION_MODEL = "ai4bharat/indictrans2-en-indic-dist-200M"
-TTS_MODEL = "ai4bharat/indic-parler-tts"
+# We pull from the `naklitechie/` ungated mirrors instead of the original
+# `ai4bharat/` repos so first-run install needs no Hugging Face account or
+# token. The mirrors are byte-identical redistributions licensed under MIT
+# (IndicTrans2) and Apache-2.0 (Indic Parler-TTS); see each repo's
+# NOTICE.md for provenance and citation pointers back to AI4Bharat.
+TRANSLATION_MODEL = "naklitechie/indictrans2-en-indic-dist-200M"
+TTS_MODEL = "naklitechie/indic-parler-tts"
 
 CACHE_DIR = Path.home() / ".cache" / "prashnam-voice"
 AUDIO_CACHE_DIR = CACHE_DIR / "audio"

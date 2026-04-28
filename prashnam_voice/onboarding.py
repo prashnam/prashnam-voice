@@ -1,9 +1,13 @@
 """Helpers for the in-app onboarding wizard.
 
-Three groups of functionality:
-  * probe_hf_token / probe_sarvam_key — connection tests during onboarding
+Two groups of functionality:
+  * probe_sarvam_key — connection test during onboarding
   * Model download tracker — drives the "Download models" step with
     byte-level progress reported back to the wizard.
+
+The HF token / ToS probes that used to live here are gone — we now pull
+the AI4Bharat models from public ungated mirrors at naklitechie/*, so
+there's nothing for the user to authenticate against.
 """
 from __future__ import annotations
 
@@ -21,105 +25,8 @@ from .config import TRANSLATION_MODEL, TTS_MODEL
 
 log = logging.getLogger(__name__)
 
-HF_API_BASE = "https://huggingface.co/api"
 SARVAM_API_BASE = "https://api.sarvam.ai"
 HTTP_TIMEOUT = 15
-
-
-# ---------------------------------------------------------------------------
-# Hugging Face — token + per-model gating probe
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class HfModelStatus:
-    model_id: str
-    status: Literal["ok", "needs_acceptance", "bad_token", "error"]
-    detail: str = ""
-
-
-@dataclass
-class HfProbeResult:
-    overall: Literal["ready", "token_invalid", "models_not_accepted", "error"]
-    models: list[HfModelStatus]
-    message: str = ""
-
-
-HF_REQUIRED_MODELS = (TRANSLATION_MODEL, TTS_MODEL)
-
-
-def probe_hf_token(token: str) -> HfProbeResult:
-    """Probe HF Hub for both gated models we need.
-
-    The model `siblings` endpoint is gated the same way as the weights:
-        200  → token valid + ToS accepted
-        401  → token invalid / missing
-        403  → token valid but ToS not yet accepted for this model
-    """
-    if not token or not token.strip():
-        return HfProbeResult(
-            overall="token_invalid",
-            models=[],
-            message="Token is empty.",
-        )
-
-    headers = {"Authorization": f"Bearer {token.strip()}"}
-    statuses: list[HfModelStatus] = []
-    bad_token = False
-    not_accepted: list[str] = []
-
-    for model_id in HF_REQUIRED_MODELS:
-        url = f"{HF_API_BASE}/models/{model_id}"
-        try:
-            r = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
-        except requests.RequestException as exc:
-            statuses.append(HfModelStatus(model_id, "error", f"network: {exc}"))
-            continue
-
-        if r.status_code == 200:
-            statuses.append(HfModelStatus(model_id, "ok"))
-        elif r.status_code == 401:
-            bad_token = True
-            statuses.append(HfModelStatus(
-                model_id, "bad_token", "token rejected"
-            ))
-        elif r.status_code == 403:
-            not_accepted.append(model_id)
-            statuses.append(HfModelStatus(
-                model_id, "needs_acceptance",
-                "open the model page on huggingface.co and click 'Agree and access'",
-            ))
-        else:
-            statuses.append(HfModelStatus(
-                model_id, "error", f"HTTP {r.status_code}"
-            ))
-
-    if bad_token:
-        return HfProbeResult(
-            overall="token_invalid",
-            models=statuses,
-            message="The token was rejected. Generate a new read token.",
-        )
-    if not_accepted:
-        return HfProbeResult(
-            overall="models_not_accepted",
-            models=statuses,
-            message=(
-                "Token works but you still need to accept the licence on: "
-                + ", ".join(not_accepted)
-            ),
-        )
-    if all(s.status == "ok" for s in statuses):
-        return HfProbeResult(
-            overall="ready",
-            models=statuses,
-            message="HF token works for both models.",
-        )
-    return HfProbeResult(
-        overall="error",
-        models=statuses,
-        message="Something went wrong — see model details.",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +195,10 @@ def _resolve_total(model_id: str, token: str | None) -> int:
     (offline, rate-limit), fall back to a sensible estimate so the
     progress bar still moves."""
     fallback = {
+        "naklitechie/indictrans2-en-indic-dist-200M": 1_100 * 1024 * 1024,
+        "naklitechie/indic-parler-tts": 3_750 * 1024 * 1024,
+        # Legacy keys kept so a stale config still gets a reasonable
+        # progress bar if the user hasn't pulled the mirror swap.
         "ai4bharat/indictrans2-en-indic-dist-200M": 800 * 1024 * 1024,
         "ai4bharat/indic-parler-tts": 3_600 * 1024 * 1024,
     }.get(model_id, 0)

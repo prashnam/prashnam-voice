@@ -12,6 +12,7 @@ install.log
 .DS_Store
 .env
 .env.*
+.hf-token*
 
 # Build / packaging
 build/

@@ -146,30 +146,6 @@ editor to populate the per-edge dropdown.
 
 These endpoints power the in-app first-run wizard.
 
-### `POST /api/onboarding/test-hf`
-
-Probe Hugging Face Hub access for both gated AI4Bharat models with the
-user's read token. Status codes on the *probe responses* map cleanly:
-`200` → token + ToS both fine, `401` → bad token, `403` → ToS not yet
-accepted (with the offending model id named).
-
-**Body**: `{"token": string}`
-
-**Response** `200`:
-```json
-{
-  "overall": "ready" | "token_invalid" | "models_not_accepted" | "error",
-  "message": "string",
-  "models": [
-    {
-      "model_id": "ai4bharat/indictrans2-en-indic-dist-200M",
-      "status":   "ok" | "needs_acceptance" | "bad_token" | "error",
-      "detail":   "string"
-    }
-  ]
-}
-```
-
 ### `POST /api/onboarding/test-sarvam`
 
 Probe a Sarvam.ai API key by translating "hello" to Hindi.
@@ -188,12 +164,15 @@ Probe a Sarvam.ai API key by translating "hello" to Hindi.
 ### `POST /api/onboarding/download-models`
 
 Kick off the AI4Bharat model download (IndicTrans2 + Indic Parler-TTS,
-~4.5 GB total) in a background thread. Returns immediately. Single-flight:
+~4.9 GB total) in a background thread. Returns immediately. Single-flight:
 calling while a download is in progress is a no-op.
 
-**Body**: `{"token": string | null}` — HF read token used to authenticate
-the gated downloads. Falls back to the `HF_TOKEN` env var (e.g. set by
-`huggingface-cli login`) if `null`.
+The weights are pulled from the public ungated mirrors at
+`naklitechie/indictrans2-en-indic-dist-200M` and
+`naklitechie/indic-parler-tts` — no HF account or token required.
+
+**Body**: `{"token": string | null}` — accepted for back-compat with
+older clients but ignored. Pass `null` (or omit).
 
 **Response** `200`:
 ```json
@@ -214,14 +193,14 @@ by the wizard on a 1-second cadence while the download step is open.
   "started_at":  1714234567.123,
   "finished_at": 0.0,
   "models": {
-    "ai4bharat/indictrans2-en-indic-dist-200M": {
-      "model_id": "ai4bharat/indictrans2-en-indic-dist-200M",
-      "total_bytes":      810000000,
+    "naklitechie/indictrans2-en-indic-dist-200M": {
+      "model_id": "naklitechie/indictrans2-en-indic-dist-200M",
+      "total_bytes":      1100000000,
       "downloaded_bytes": 312500000,
       "status": "running",
       "error":  null
     },
-    "ai4bharat/indic-parler-tts": { "...": "..." }
+    "naklitechie/indic-parler-tts": { "...": "..." }
   }
 }
 ```
@@ -717,7 +696,7 @@ List all attempts for `(segment, lang, r0)`. Sorted newest first.
       "pace": "moderate",
       "source_text": "कौन जीतेगा?",
       "duration_s": 2.4,
-      "model_id": "ai4bharat/indic-parler-tts",
+      "model_id": "naklitechie/indic-parler-tts",
       "created_at": "2026-04-27T15:30:00.000000+00:00"
     }
   ]

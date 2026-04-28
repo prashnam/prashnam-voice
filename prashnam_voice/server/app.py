@@ -78,10 +78,6 @@ class GenerateRequest(BaseModel):
     paces: dict[str, str] = Field(default_factory=dict)
 
 
-class TestHfRequest(BaseModel):
-    token: str
-
-
 class TestSarvamRequest(BaseModel):
     api_key: str
 
@@ -93,6 +89,9 @@ class CompleteOnboardingRequest(BaseModel):
 
 
 class DownloadModelsRequest(BaseModel):
+    # Kept for back-compat with older clients still POSTing {token: ...}; now
+    # ignored — we mirror the AI4Bharat models under naklitechie/* (public,
+    # ungated) so no HF auth is needed.
     token: str | None = None
 
 
@@ -243,16 +242,6 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
     # ------------------------------------------------------------------
     # Onboarding
     # ------------------------------------------------------------------
-
-    @api.post("/api/onboarding/test-hf")
-    def onboarding_test_hf(req: TestHfRequest) -> dict:
-        from dataclasses import asdict
-        result = onboarding_helpers.probe_hf_token(req.token)
-        return {
-            "overall": result.overall,
-            "message": result.message,
-            "models": [asdict(m) for m in result.models],
-        }
 
     @api.post("/api/onboarding/test-sarvam")
     def onboarding_test_sarvam(req: TestSarvamRequest) -> dict:

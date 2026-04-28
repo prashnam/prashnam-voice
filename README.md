@@ -27,8 +27,8 @@ adapter (Sarvam) exposes 35 v3 voices that work cross-language.
 
 | | |
 |---|---|
-| Translation | [`ai4bharat/indictrans2-en-indic-dist-200M`](https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M) |
-| TTS | [`ai4bharat/indic-parler-tts`](https://huggingface.co/ai4bharat/indic-parler-tts) |
+| Translation | [`naklitechie/indictrans2-en-indic-dist-200M`](https://huggingface.co/naklitechie/indictrans2-en-indic-dist-200M) — verbatim mirror of [`ai4bharat/…`](https://huggingface.co/ai4bharat/indictrans2-en-indic-dist-200M) (MIT) |
+| TTS | [`naklitechie/indic-parler-tts`](https://huggingface.co/naklitechie/indic-parler-tts) — verbatim mirror of [`ai4bharat/…`](https://huggingface.co/ai4bharat/indic-parler-tts) (Apache-2.0) |
 | Languages | en + 22 Indic (see above) |
 
 ## Install
@@ -181,7 +181,7 @@ Audio is content-addressed in `~/.cache/prashnam-voice/audio/<sha256>.mp3` keyed
 
 ## Notes / known quirks
 
-- **First-run download ≈ 4.5 GB** to `~/.cache/huggingface/`. Use `prashnam-voice prefetch` to do this up front.
+- **First-run download ≈ 4.9 GB** to `~/.cache/huggingface/`. Use `prashnam-voice prefetch` to do this up front. We pull from public ungated mirrors at `naklitechie/*` — byte-identical to the upstream AI4Bharat repos but with no Hugging Face account or licence-acceptance needed. Each mirror's `NOTICE.md` documents provenance and citation pointers back to AI4Bharat. See [the model cards](https://huggingface.co/naklitechie) for licence terms (MIT for IndicTrans2, Apache-2.0 for Indic Parler-TTS).
 - **Punjabi (pa)** is listed as "unofficial" in Indic Parler-TTS; pronunciation is weaker than the other 9. Acceptable for v1; revisit with IndicF5 if quality is unusable.
 - **Apple Silicon**: TTS runs on `mps` if available with a startup probe; falls back to CPU automatically if MPS errors. Translation uses `mps` in fp16.
 - **Voice names**: defaults are picked from Parler-TTS recommended speakers; override per-call with `--voice hi=Aditi`.
