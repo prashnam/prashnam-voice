@@ -1,7 +1,12 @@
 # prashnam-voice
 
 Local English → Indian-language voice generator for [prashnam.ai](https://prashnam.ai).
-Type your content in English, pick languages, get an MP3 per item per language. Fully offline after first-run model download. No API keys.
+Type your content in English, pick languages, get an MP3 per item per language.
+
+**No third-party logins.** No Hugging Face account, no API keys, no
+cloud round-trip. The translation + TTS models download once and run
+on-device after that. Cloud (Sarvam.ai) is available as a side door if
+you'd rather pay-per-call than load 5 GB of weights.
 
 Three project shapes ship in the box:
 
@@ -43,6 +48,11 @@ if you used the official python.org installer.
 That's it. The script creates a venv, installs dependencies, launches the
 local server, and opens the setup page in your browser. Keep its window
 open while you use the app — closing it stops the server.
+
+The first regen downloads ~4.9 GB of model weights (one-time) from
+public mirrors at [`huggingface.co/naklitechie/*`](https://huggingface.co/naklitechie) — no
+account, no token, no licence-acceptance click-through. After that
+everything runs offline.
 
 ### Daily launch
 
@@ -86,7 +96,7 @@ prashnam-voice list-voices
 # clear the audio cache
 prashnam-voice cache-clear
 
-# download model weights ahead of time (~4.5 GB)
+# download model weights ahead of time (~4.9 GB)
 prashnam-voice prefetch
 
 # launch the web app
@@ -141,7 +151,42 @@ prashnam-voice projects show <project-id>
 prashnam-voice projects delete <project-id> -y
 ```
 
-## Legacy one-shot CLI (still supported)
+### IVR projects (DAG editor)
+
+Pick **IVR menu** in the new-project dialog and the editor switches to a
+visual call-flow canvas. Five segment types — `prompt`, `menu`,
+`response`, `bridge`, `terminator` — rendered as nodes; DTMF + special
+edges (`1`–`9`, `0`, `*`, `#`, `timeout`, `invalid`) drawn between them.
+
+- **Drag** a node to move it; positions persist.
+- **Drag from a port** on the right of a node onto another node to wire
+  an edge. A dropdown lets you pick the key (DTMF digit or special).
+- **Click a node** to focus the segment editor in the right pane —
+  English text, per-language translations, audio takes — exactly like
+  poll/announcement segments.
+- **Set as start** pins the call-flow's entry point.
+- **▶ Walk** opens a dialog with a 12-key DTMF keypad + timeout/invalid
+  chips. Plays the active node's audio in your chosen language; pressing
+  a key follows the matching edge. Breadcrumbs show the path so far.
+  Stops on a terminator or an unmapped edge.
+
+The DAG topology is plain JSON on disk (`segments[].edges`,
+`segments[].x` / `.y`, `start_segment_id`) — no separate graph file. See
+[`docs/python-api.md`](docs/python-api.md) for the
+`store.set_segment_edge` / `store.set_start_segment` /
+`project.resolve_start_segment` API surface, and
+[`docs/rest-api.md`](docs/rest-api.md) for the four IVR HTTP endpoints
+(`/api/ivr-keys`, `PATCH …/edge`, `PATCH …/position`,
+`PATCH …/start-segment`).
+
+## One-shot CLI (no project, no UI)
+
+The `generate` subcommand from the CLI section above writes to a flat
+`<lang>/{question,option_N}.mp3` layout under `output/<run_id>/`,
+alongside a `translations.json` and a `meta.json` (model versions,
+timings, cache hits). `<run_id>` is a local timestamp
+(`YYYYMMDD_HHMMSS`). Useful for scripted batch runs that don't need the
+project history / takes / rotations machinery.
 
 ```bash
 prashnam-voice generate \
@@ -151,20 +196,6 @@ prashnam-voice generate \
   --pace slow --pace ta=very_slow \
   --out ./output
 ```
-
-Output layout for one-shot runs:
-
-```
-output/<run_id>/
-├── translations.json
-├── meta.json
-└── <lang>/
-    ├── question.mp3
-    ├── option_1.mp3
-    └── ...
-```
-
-`<run_id>` is a local timestamp (`YYYYMMDD_HHMMSS`).
 
 ## Caching
 
@@ -181,7 +212,8 @@ Audio is content-addressed in `~/.cache/prashnam-voice/audio/<sha256>.mp3` keyed
 
 ## Notes / known quirks
 
-- **First-run download ≈ 4.9 GB** to `~/.cache/huggingface/`. Use `prashnam-voice prefetch` to do this up front. We pull from public ungated mirrors at `naklitechie/*` — byte-identical to the upstream AI4Bharat repos but with no Hugging Face account or licence-acceptance needed. Each mirror's `NOTICE.md` documents provenance and citation pointers back to AI4Bharat. See [the model cards](https://huggingface.co/naklitechie) for licence terms (MIT for IndicTrans2, Apache-2.0 for Indic Parler-TTS).
+- **First-run download ≈ 4.9 GB** to `~/.cache/huggingface/`. Use `prashnam-voice prefetch` to do this up front.
+- **Mirrored weights**: we pull from public ungated mirrors at [`naklitechie/*`](https://huggingface.co/naklitechie). Bytes are byte-identical to the upstream AI4Bharat repos; the redistribution is permitted by the upstream licences (MIT + Apache-2.0). Each mirror's `NOTICE.md` documents provenance and citation back to AI4Bharat — please cite them, not us, in any research write-up.
 - **Punjabi (pa)** is listed as "unofficial" in Indic Parler-TTS; pronunciation is weaker than the other 9. Acceptable for v1; revisit with IndicF5 if quality is unusable.
 - **Apple Silicon**: TTS runs on `mps` if available with a startup probe; falls back to CPU automatically if MPS errors. Translation uses `mps` in fp16.
 - **Voice names**: defaults are picked from Parler-TTS recommended speakers; override per-call with `--voice hi=Aditi`.
