@@ -33,40 +33,27 @@ adapter (Sarvam) exposes 35 v3 voices that work cross-language.
 
 ## Install
 
-Two clicks. No Terminal required on macOS or Windows (assuming you used the
-official Python installer).
+Two prerequisites, then one command. No Terminal required on macOS or Windows
+if you used the official python.org installer.
 
-1. **Get the repo.** `git clone …` (or "Download ZIP" → unzip).
-2. **Open `index.html`** in your browser by double-clicking it in
-   Finder/Explorer. It's a one-page setup guide that auto-detects when the
-   server is running.
-3. **Install Python 3.11+** if you don't already have it
-   (https://www.python.org/downloads/).
-4. **Run `install.py`:**
-   - macOS — double-click `install.py`. Python Launcher (installed by
-     python.org) opens it in Terminal.
-   - Windows — double-click `install.py`. The Python Launcher (`py.exe`)
-     runs it in a console window.
-   - Linux (or anywhere via terminal) — `python3 install.py` from this
-     folder.
-5. The installer creates a virtual environment, installs dependencies, and
-   launches the local server. The bootstrap page detects it and shows the
-   "Open app" button. Keep the installer's window open while you use the
-   app — closing it stops the server.
+1. **[Install Python 3.11](https://www.python.org/downloads/release/python-3119/)** if you don't already have it. (3.13/3.14 lack ML wheels — pick 3.11.)
+2. **Get the repo.** `git clone https://github.com/prashnam/prashnam-voice.git` — or "Download ZIP" + unzip.
+3. **Run `install.py`** — double-click it in Finder/Explorer (macOS/Windows), or `python3 install.py` from a terminal.
 
-### Daily launch (after restart, closed terminal, etc.)
+That's it. The script creates a venv, installs dependencies, launches the
+local server, and opens the setup page in your browser. Keep its window
+open while you use the app — closing it stops the server.
 
-Run `install.py` again. The script is idempotent:
+### Daily launch
 
-- If the venv already exists and dependencies are up-to-date (its
-  `egg-info` mtime ≥ `pyproject.toml` mtime), the slow pip step is
-  skipped and the server starts in a couple of seconds.
-- If port `8765` is busy (an old instance, or another service), it
-  walks up to `8775` and uses the first free one. The bootstrap page
-  (`index.html`) probes the same range, so deep-links keep working.
-- To force a clean reinstall: `rm -rf .venv` and run `install.py`.
+Run `install.py` again — it's the same script for first install and every
+relaunch. When the venv is already set up, it skips pip and starts the
+server in a couple of seconds. If port 8765 is busy it walks up to 8775
+and the bootstrap page (`index.html`) auto-discovers the new port, so
+deep-links still work.
 
-Pinning a specific port: `PRASHNAM_PORT=9000 python3 install.py`.
+Force a clean reinstall: `rm -rf .venv` and run `install.py` again.
+Pin a specific port: `PRASHNAM_PORT=9000 python3 install.py`.
 
 ### Manual install (terminal)
 
