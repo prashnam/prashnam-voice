@@ -727,8 +727,7 @@ function buildLangCell(proj, seg, lang) {
   $(".lang-name", cell).textContent = meta ? meta.name : lang;
 
   const tr = $(".translation", cell);
-  if (seg.translations[lang]) tr.textContent = seg.translations[lang];
-  else tr.textContent = "";
+  tr.textContent = seg.translations[lang]?.r0 || "";
 
   const pill = $(".pill", cell);
   const player = $(".player", cell);
@@ -1272,7 +1271,7 @@ function updateCellTranslation(sid, lang, proj) {
   const seg = proj.segments.find((s) => s.id === sid);
   if (!seg) return;
   const tr = cell.querySelector(".translation");
-  if (tr) tr.textContent = seg.translations[lang] || "";
+  if (tr) tr.textContent = seg.translations[lang]?.r0 || "";
 }
 
 function updateCellAudio(sid, lang, proj) {

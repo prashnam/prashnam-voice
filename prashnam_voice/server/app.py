@@ -25,6 +25,16 @@ from .. import onboarding as onboarding_helpers
 from .. import engines
 from .. import domains as domains_mod
 
+# Once the user has completed onboarding the model snapshots are guaranteed
+# cached, so force HF Hub offline. Otherwise transformers does a revision-check
+# round-trip on every from_pretrained() call — which silently hangs / fails when
+# the network is unreachable, even though we'd never need to download anything.
+# Set before any transformers import (translator.py imports it eagerly).
+if app_config.load().onboarded:
+    import os as _os
+    _os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    _os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 from ..config import (
     ALL_LANG_CODES,
     DEFAULT_PACE,
@@ -282,6 +292,11 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
         app_config.update(_apply)
         # Drop any cached engine so subsequent calls pick up the new adapter.
         engines.release()
+        # Match the startup-time setdefault so first translate post-onboarding
+        # doesn't need a server restart to skip HF Hub revision checks.
+        import os as _os
+        _os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        _os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
         return {"ok": True}
 
     # ------------------------------------------------------------------
