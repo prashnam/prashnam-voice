@@ -90,6 +90,10 @@ prashnam-voice generate \
 # from a JSON file
 prashnam-voice generate --from-json poll.json --langs all
 
+# bulk-create projects from a CSV (poll or announcement)
+prashnam-voice batch examples/polls.csv --domain poll --langs hi,ta,bn,en
+prashnam-voice batch examples/announcements.csv --domain announcement
+
 # list default voices
 prashnam-voice list-voices
 
@@ -118,8 +122,8 @@ open http://127.0.0.1:8765
 
 The web app is project-centric:
 
-- **Project list** (`#/`): create, open, delete projects. Each project lives on disk under `./projects/<id>/`.
-- **Project editor** (`#/p/<id>`): edit settings (name, languages, default pace, per-language pace overrides), and a list of segments (one question + N options).
+- **Project list** (`#/`): create, open, delete projects, or **Import CSV…** to bulk-create polls/announcements from a single file (`group_id` column groups rows into projects — see `examples/polls.csv`, `examples/announcements.csv`). Each project lives on disk under `./projects/<id>/`.
+- **Project editor** (`#/p/<id>`): edit settings (name, languages, default pace, per-language pace overrides, **pronunciation lexicon** for fixing how TTS says specific names/places — global plus per-language overrides — and **templates** that wrap each segment, e.g. polls default to `Question: {q}` / `Press {n} for {opt}`, opt-out per segment), and a list of segments (one question + N options).
   - Type English text in any segment — after a 5 s pause, the backend re-translates and regenerates audio in every selected language for that segment.
   - Each (segment, language) cell shows the translated text, an inline audio player, a `⟳` to regenerate just that one MP3, a "Voice / pace" disclosure to override the per-language defaults *for that one segment*, and a "Takes" disclosure to browse and switch between all previous attempts.
   - Each segment row has a `⟳ all` button to regenerate every selected language for that segment.

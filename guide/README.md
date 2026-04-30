@@ -24,7 +24,7 @@ The collapsed disclosure expands into Languages (with per-language pace override
 
 ## Onboarding wizard
 ![Onboarding wizard](06-onboarding-wizard.png)
-First-time setup walks through engine choice, Hugging Face account, T&Cs, and token entry. The "Run on this computer" engine ships the AI4Bharat models locally; "Sarvam.ai (cloud)" uses an API key instead.
+First-time setup is just two clicks: pick an engine, then download. The "Run on this computer" engine ships the AI4Bharat models locally — no Hugging Face account, no token, no T&Cs click-through (we mirror the weights ungated under [`naklitechie/*`](https://huggingface.co/naklitechie)). "Sarvam.ai (cloud)" uses an API key instead.
 
 ## Help
 ![Help modal](07-help-modal.png)

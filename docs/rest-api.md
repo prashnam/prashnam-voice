@@ -219,7 +219,7 @@ Drops cached engines so the next inference picks up the new adapter.
   "translator": "local-ai4bharat" | "sarvam",
   "tts":        "local-ai4bharat" | "sarvam",
   "settings": {
-    "<adapter_name>": {"api_key": "...", "hf_token": "..."}
+    "<adapter_name>": {"api_key": "..."}
   }
 }
 ```
