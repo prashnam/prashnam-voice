@@ -248,6 +248,16 @@ function parseRoute() {
 
 window.addEventListener("hashchange", render);
 
+// One-at-a-time audio. Whenever any <audio> starts playing, pause every other
+// one. Capture phase so dynamically-added players (regen, takes, walk sim) are
+// covered without per-element listeners.
+document.addEventListener("play", (e) => {
+  if (!(e.target instanceof HTMLAudioElement)) return;
+  for (const a of document.querySelectorAll("audio")) {
+    if (a !== e.target && !a.paused) a.pause();
+  }
+}, true);
+
 // --------------------------------------------------------------------------
 // Render
 // --------------------------------------------------------------------------
