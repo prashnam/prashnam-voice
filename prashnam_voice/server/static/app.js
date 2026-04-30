@@ -884,7 +884,7 @@ async function loadTakes(pid, sid, lang, cell) {
   catch (e) { ul.innerHTML = `<li class="muted">error: ${e.message}</li>`; return; }
   ul.innerHTML = "";
   const seg = state.currentProject.segments.find((s) => s.id === sid);
-  const current = seg ? seg.current_takes[lang] : null;
+  const current = seg ? seg.current_takes[lang]?.r0 : null;
   if (!attempts.length) {
     ul.innerHTML = "<li class=\"muted\">no takes yet</li>"; return;
   }
@@ -1279,7 +1279,7 @@ function updateCellAudio(sid, lang, proj) {
   if (!cell) return;
   const seg = proj.segments.find((s) => s.id === sid);
   if (!seg) return;
-  const att = seg.current_takes[lang];
+  const att = seg.current_takes[lang]?.r0;
   if (!att) return;
   const player = cell.querySelector(".player");
   if (player) {
