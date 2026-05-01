@@ -514,6 +514,7 @@ function textToEntries(text) {
 async function onSaveSettings() {
   const proj = state.currentProject;
   if (!proj) return;
+  const oldLangs = new Set(proj.langs || []);
   const name = $("#setting-name").value.trim();
   const default_pace = $("#setting-pace").value;
   const langs = $$("#setting-langs input[type=checkbox]:checked").map((el) => el.value);
@@ -544,6 +545,28 @@ async function onSaveSettings() {
     $("#proj-name").textContent = name;
     setTimeout(() => ($("#settings-status").textContent = ""), 2000);
     await reloadProject();
+
+    // If the user just added languages, queue them for regen on every segment
+    // that has English text. Segments with a regen already in flight stash the
+    // new langs in pendingLangs; finalizeJob fires the follow-up regen so the
+    // new langs show up in the queue without needing the user to click ⟳.
+    const addedLangs = (state.currentProject?.langs || []).filter((l) => !oldLangs.has(l));
+    if (addedLangs.length > 0) {
+      const projNow = state.currentProject;
+      for (const seg of projNow.segments) {
+        if (!seg.english.trim()) continue;
+        const segState = getSegState(seg.id);
+        if (segState.regenInFlight) {
+          segState.pendingLangs = segState.pendingLangs || new Set();
+          for (const l of addedLangs) {
+            segState.pendingLangs.add(l);
+            markCellPill(seg.id, l, "busy", "queued");
+          }
+        } else {
+          triggerRegen(projNow.id, seg.id, addedLangs, effectiveText(projNow, seg, seg.english));
+        }
+      }
+    }
   } catch (e) {
     $("#settings-status").textContent = "error: " + e.message;
   }
@@ -1199,6 +1222,20 @@ async function finalizeJob(job) {
     }
     setSegStatusById(sid, `regenerated · ${job.elapsed_s.toFixed(1)}s`);
     setTimeout(() => setSegStatusById(sid, ""), 4000);
+  }
+
+  // If the user added langs while this job was in flight, fire the follow-up
+  // regen now that the segment is no longer in flight. We only chain when the
+  // previous job succeeded — on error we leave the pending set alone so the
+  // user can retry manually.
+  if (seg.pendingLangs && seg.pendingLangs.size > 0 && job.status !== "error") {
+    const pending = [...seg.pendingLangs];
+    seg.pendingLangs.clear();
+    const proj = state.currentProject;
+    const segNow = proj?.segments.find((s) => s.id === sid);
+    if (proj && segNow && segNow.english.trim()) {
+      triggerRegen(proj.id, sid, pending, effectiveText(proj, segNow, segNow.english));
+    }
   }
 }
 
