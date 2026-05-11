@@ -22,6 +22,28 @@ Each segment shows its source text, the rendered IVR wrapper, and per-language t
 ![Project settings](05-project-settings.png)
 The collapsed disclosure expands into Languages (with per-language pace overrides), Pronunciation lexicon (global plus per-language), and Templates (the IVR wrappers around questions and options).
 
+## Merging audio for IVR upload  (poll only)
+![Merge section — empty state](10-merge-section.png)
+Below the segments grid on every poll project, "Merge audio" assembles the question + every option (in canonical order) into a single MP3 per language — the format most IVR systems want to ingest. Three knobs across the top:
+
+- **Gap (s)** — silence inserted between segments. Defaults to 1.0 s; bump it up for slower-paced flows or down for tight ones.
+- **Beep at end** — appends a short 800 Hz pulse so the IVR knows the prompt has finished. On by default.
+- **Include preamble** — picks between the templated lead-in ("Namaskar, this is a call from Prashnam…") and the bare-body version of the question. Toggling this changes which variant the Merge button produces.
+
+All three settings persist per project — the next merge starts with whatever you last used.
+
+![Merge section — after merging both languages](11-merge-section-after.png)
+"Merge all languages" runs every selected language in one pass and inline `<audio>` players appear with the result. Per-language **Merge** buttons re-roll just one row when you've fiddled with that language alone. The variant label next to each language name (e.g. "(with preamble)") makes it obvious which file the player is loading.
+
+Merged files land under `projects/<id>/merged/<lang>_with_preamble.mp3` (or `_no_preamble.mp3`) and are bundled into the project zip alongside the per-segment audio.
+
+### Per-language gain
+![Merge section — Hindi nudged to +3 dB](12-merge-gain-bumped.png)
+TTS voices don't all hit the same loudness — every clip is normalized to -16 LUFS during synthesis, but if one language still sounds quieter than the rest you can rescue it with the per-language **Gain** slider (capped at ±6 dB). Release the slider and the row auto-re-merges; the audio player picks up the new file automatically. The slider value is saved per project, so the next merge applies it without any extra clicks.
+
+### Out-of-date hint
+Any time you re-roll a segment's audio after merging, the affected language row turns amber and the status line reads "out of date — re-merge after regenerating." Hit **Merge** on that row (or **Merge all languages**) to refresh.
+
 ## Onboarding wizard
 ![Onboarding wizard](06-onboarding-wizard.png)
 First-time setup is just two clicks: pick an engine, then download. The "Run on this computer" engine ships the AI4Bharat models locally — no Hugging Face account, no token, no T&Cs click-through (we mirror the weights ungated under [`naklitechie/*`](https://huggingface.co/naklitechie)). "Sarvam.ai (cloud)" uses an API key instead.
