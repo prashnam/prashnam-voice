@@ -45,6 +45,8 @@ from ..config import (
 from ..pipeline import (
     JobProgress,
     LangProgress,
+    merge_poll_audio,
+    merged_audio_info,
     run_pipeline,
     synthesize_segment_lang,
     translate_segments,
@@ -183,6 +185,25 @@ class ReshuffleRequest(BaseModel):
 
 class ToggleLockRequest(BaseModel):
     lock_at_end: bool
+
+
+class UpdateMergeSettingsRequest(BaseModel):
+    """Patch merge defaults. Omitted fields are left untouched. `lang_gain_db`,
+    when present, replaces the whole map (server clamps values to ±6 dB)."""
+    gap_seconds: float | None = None
+    include_beep: bool | None = None
+    include_preamble: bool | None = None
+    lang_gain_db: dict[str, float] | None = None
+
+
+class MergePollRequest(BaseModel):
+    """Build merged MP3s for the given languages.
+
+    `include_preamble` defaults to the project's persisted value; passing it
+    here also persists it as the new default so the next merge remembers it.
+    """
+    langs: list[str]
+    include_preamble: bool | None = None
 
 
 def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
@@ -807,6 +828,97 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
             raise HTTPException(404, "not found")
         return FileResponse(path, media_type="audio/mpeg", filename=name)
 
+    # ------------------------------------------------------------------
+    # Merge — poll-only: concatenate question + options into one MP3 per
+    # language. Synchronous: the fast path is just a pydub concat (sub-
+    # second). The slow path synthesizes the alternate preamble variant of
+    # the question on-the-fly when the user's saved take has the opposite
+    # `use_template` setting from the merge request.
+    # ------------------------------------------------------------------
+
+    @api.patch("/api/projects/{pid}/merge-settings")
+    def update_merge_settings(pid: str, req: UpdateMergeSettingsRequest) -> dict:
+        try:
+            store.update_merge_settings(
+                pid,
+                gap_seconds=req.gap_seconds,
+                include_beep=req.include_beep,
+                include_preamble=req.include_preamble,
+                lang_gain_db=req.lang_gain_db,
+            )
+        except FileNotFoundError:
+            raise HTTPException(404, "project not found")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        return _project_payload(pid, store)
+
+    @api.post("/api/projects/{pid}/merge")
+    def merge_poll(pid: str, req: MergePollRequest) -> dict:
+        try:
+            proj = store.load(pid)
+        except FileNotFoundError:
+            raise HTTPException(404, "project not found")
+        if proj.domain != "poll":
+            raise HTTPException(400, "merge is only supported for poll projects")
+        if not req.langs:
+            raise HTTPException(400, "no langs specified")
+        bad = [c for c in req.langs if c not in LANGUAGES]
+        if bad:
+            raise HTTPException(400, f"unknown langs: {bad}")
+
+        if req.include_preamble is not None and req.include_preamble != proj.merge_include_preamble:
+            store.update_merge_settings(pid, include_preamble=req.include_preamble)
+            proj = store.load(pid)
+        include_preamble = proj.merge_include_preamble
+
+        merged: dict[str, dict] = {}
+        errors: dict[str, str] = {}
+        for code in req.langs:
+            try:
+                path = merge_poll_audio(
+                    store, proj, code, include_preamble=include_preamble,
+                )
+                merged[code] = {
+                    "lang": code,
+                    "variant": "with_preamble" if include_preamble else "no_preamble",
+                    "mtime": path.stat().st_mtime,
+                }
+            except (ValueError, FileNotFoundError) as exc:
+                errors[code] = str(exc)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("merge %s/%s failed", pid, code)
+                errors[code] = f"{type(exc).__name__}: {exc}"
+
+        return {
+            "merged": merged,
+            "errors": errors,
+            "include_preamble": include_preamble,
+            "project": _project_payload(pid, store),
+        }
+
+    @api.get("/api/projects/{pid}/merged-info")
+    def merged_info(pid: str) -> dict:
+        """Per-language status of merged files: which variants exist, when
+        they were last written, and whether they're stale relative to the
+        underlying segment takes."""
+        try:
+            proj = store.load(pid)
+        except FileNotFoundError:
+            raise HTTPException(404, "project not found")
+        info: dict[str, dict] = {}
+        for code in proj.langs or []:
+            info[code] = merged_audio_info(store, proj, code)
+        return {"by_lang": info}
+
+    @api.get("/api/projects/{pid}/merged/{name}")
+    def get_merged_audio(pid: str, name: str):
+        if "/" in name or ".." in name or not name.endswith(".mp3"):
+            raise HTTPException(400, "invalid name")
+        path = store.merged_dir(pid) / name
+        if not path.exists():
+            raise HTTPException(404, "not found")
+        return FileResponse(path, media_type="audio/mpeg", filename=name)
+
     @api.get("/api/projects/{pid}/zip")
     def project_zip(pid: str):
         try:
@@ -857,6 +969,11 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
                             label = f"body_{proj.option_index(seg.id) or 1}"
                         prefix = f"{rotation_id}/" if multi_rotation else ""
                         zf.write(src, f"{prefix}{lang}/{label}.mp3")
+
+            merged_dir = store.merged_dir(pid)
+            if merged_dir.exists():
+                for mp in sorted(merged_dir.glob("*.mp3")):
+                    zf.write(mp, f"merged/{mp.name}")
         buf.seek(0)
         headers = {"Content-Disposition": f'attachment; filename="{proj.id}.zip"'}
         return StreamingResponse(buf, media_type="application/zip", headers=headers)

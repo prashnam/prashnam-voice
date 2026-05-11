@@ -352,7 +352,54 @@ ann1,Please remain seated</pre>
         <button id="add-option" class="primary">+ Add option</button>
         <span class="muted" id="autosave-status"></span>
       </div>
+
+      <!-- Poll-only: merge the question + every option into one MP3 per
+           language for IVR upload. Hidden for announcement / IVR. -->
+      <section id="merge-section" class="merge-section" hidden>
+        <header class="merge-head">
+          <h3>Merge audio</h3>
+          <span class="muted small">Concatenate the question + every option into a single MP3 per language. Use this once each segment sounds right.</span>
+        </header>
+        <div class="merge-controls">
+          <label class="inline">
+            <span>Gap (s)</span>
+            <input type="number" id="merge-gap" min="0" max="5" step="0.1" />
+          </label>
+          <label class="inline-checkbox">
+            <input type="checkbox" id="merge-beep" />
+            <span>Beep at end</span>
+          </label>
+          <label class="inline-checkbox">
+            <input type="checkbox" id="merge-preamble" />
+            <span>Include preamble</span>
+          </label>
+          <span style="flex:1"></span>
+          <button id="merge-all" class="primary" type="button">Merge all languages</button>
+        </div>
+        <ul id="merge-list" class="merge-list"></ul>
+      </section>
     </section>
+  </template>
+
+  <template id="tpl-merge-row">
+    <li class="merge-row" data-lang="">
+      <div class="merge-row-head">
+        <span class="merge-lang"></span>
+        <span class="merge-variant muted small"></span>
+        <span style="flex:1"></span>
+        <button class="merge-one ghost" type="button">Merge</button>
+      </div>
+      <audio class="merge-player" controls preload="none" hidden></audio>
+      <div class="merge-row-foot">
+        <span class="merge-state muted small"></span>
+        <span style="flex:1"></span>
+        <label class="gain-block">
+          <span class="muted small">Gain</span>
+          <input type="range" class="gain-slider" min="-6" max="6" step="0.5" value="0" />
+          <span class="gain-readout muted small">0 dB</span>
+        </label>
+      </div>
+    </li>
   </template>
 
   <template id="tpl-segment-card">

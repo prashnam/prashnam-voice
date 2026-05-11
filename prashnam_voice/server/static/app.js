@@ -120,7 +120,14 @@ const Api = {
   job:          (jobId)            => api("GET",   `/api/jobs/${jobId}`),
   jobs:         ()                 => api("GET",   "/api/jobs"),
   openFolder:   (pid)              => api("POST",  `/api/projects/${pid}/open-folder`),
+  mergeSettings:(pid, body)        => api("PATCH", `/api/projects/${pid}/merge-settings`, body),
+  mergePoll:    (pid, body)        => api("POST",  `/api/projects/${pid}/merge`, body),
+  mergedInfo:   (pid)              => api("GET",   `/api/projects/${pid}/merged-info`),
 };
+
+function mergedAudioUrl(pid, lang, variant) {
+  return `/api/projects/${pid}/merged/${lang}_${variant}.mp3`;
+}
 
 function audioUrl(pid, sid, lang, attemptId, rotationId = "r0") {
   if (rotationId && rotationId !== "r0") {
@@ -406,6 +413,7 @@ async function renderProject(pid) {
   renderSettings(proj);
   renderSegments(proj);
   renderDag(proj);
+  renderMergeSection(proj);
 
   // If the project has no segments yet, auto-create the domain's seed
   // segment (question for polls, body for announcements). For IVR,
@@ -422,6 +430,7 @@ async function reloadProject() {
   state.currentProject = proj;
   renderSegments(proj);
   renderDag(proj);
+  renderMergeSection(proj);
   $("#proj-meta").textContent =
     `${proj.langs.length} languages · default pace ${PACE_LABELS[proj.default_pace] || proj.default_pace}`;
   return proj;
@@ -570,6 +579,223 @@ async function onSaveSettings() {
   } catch (e) {
     $("#settings-status").textContent = "error: " + e.message;
   }
+}
+
+// --------------------------------------------------------------------------
+// Merge audio (poll-only)
+// --------------------------------------------------------------------------
+
+const mergeState = {
+  /** {[lang]: {with_preamble?: {mtime, stale}, no_preamble?: {mtime, stale}}} */
+  info: {},
+  /** debounce timers per (lang, control) so slider drag doesn't spam the API */
+  gainTimers: new Map(),
+};
+
+async function renderMergeSection(proj) {
+  const section = $("#merge-section");
+  if (!section) return;
+  if (proj.domain !== "poll") {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  $("#merge-gap").value = String(proj.merge_gap_seconds ?? 1.0);
+  $("#merge-beep").checked = !!proj.merge_include_beep;
+  $("#merge-preamble").checked = !!proj.merge_include_preamble;
+
+  // Top-level controls — save-on-change. The preamble toggle also affects
+  // which variant a merge produces, but the actual variant is decided when
+  // the user clicks "Merge", so we just persist the choice here.
+  $("#merge-gap").onchange = () => onMergeSettingChange(proj.id, {
+    gap_seconds: parseFloat($("#merge-gap").value) || 0,
+  });
+  $("#merge-beep").onchange = () => onMergeSettingChange(proj.id, {
+    include_beep: $("#merge-beep").checked,
+  });
+  $("#merge-preamble").onchange = () => onMergeSettingChange(proj.id, {
+    include_preamble: $("#merge-preamble").checked,
+  });
+  $("#merge-all").onclick = () => onMergeRun(proj.id, proj.langs.slice());
+
+  try {
+    mergeState.info = (await Api.mergedInfo(proj.id)).by_lang || {};
+  } catch {
+    mergeState.info = {};
+  }
+
+  const list = $("#merge-list");
+  list.innerHTML = "";
+  for (const code of proj.langs) {
+    list.appendChild(buildMergeRow(proj, code));
+  }
+}
+
+function buildMergeRow(proj, lang) {
+  const row = tpl("tpl-merge-row");
+  row.dataset.lang = lang;
+  const meta = state.langs.find((l) => l.code === lang) || { name: lang };
+  $(".merge-lang", row).textContent = meta.name;
+
+  const info = mergeState.info[lang] || {};
+  const variant = proj.merge_include_preamble ? "with_preamble" : "no_preamble";
+  const variantInfo = info[variant];
+  const player = $(".merge-player", row);
+  const state_el = $(".merge-state", row);
+
+  if (variantInfo) {
+    player.hidden = false;
+    player.src = mergedAudioUrl(proj.id, lang, variant);
+    if (variantInfo.stale) {
+      row.classList.add("stale");
+      state_el.textContent = "out of date — re-merge after regenerating";
+    } else {
+      state_el.textContent = `merged · ${formatTime(new Date(variantInfo.mtime * 1000).toISOString())}`;
+    }
+  } else {
+    state_el.textContent = "not merged yet";
+  }
+  $(".merge-variant", row).textContent = proj.merge_include_preamble ? "(with preamble)" : "(no preamble)";
+
+  // Gain slider
+  const slider = $(".gain-slider", row);
+  const readout = $(".gain-readout", row);
+  const gain = Number(proj.lang_gain_db?.[lang] ?? 0);
+  slider.value = String(gain);
+  readout.textContent = formatGain(gain);
+  slider.addEventListener("input", () => {
+    readout.textContent = formatGain(Number(slider.value));
+  });
+  slider.addEventListener("change", () => {
+    const value = Number(slider.value);
+    scheduleGainSave(proj.id, lang, value);
+  });
+
+  // Per-language merge button
+  $(".merge-one", row).addEventListener("click", () => {
+    onMergeRun(proj.id, [lang]);
+  });
+
+  return row;
+}
+
+function formatGain(db) {
+  if (Math.abs(db) < 0.05) return "0 dB";
+  const sign = db > 0 ? "+" : "";
+  return `${sign}${db.toFixed(1).replace(/\.0$/, "")} dB`;
+}
+
+function scheduleGainSave(pid, lang, value) {
+  const key = `${pid}::${lang}`;
+  const t = mergeState.gainTimers.get(key);
+  if (t) clearTimeout(t);
+  mergeState.gainTimers.set(key, setTimeout(async () => {
+    mergeState.gainTimers.delete(key);
+    const proj = state.currentProject;
+    if (!proj || proj.id !== pid) return;
+    const next = { ...(proj.lang_gain_db || {}), [lang]: value };
+    try {
+      const updated = await Api.mergeSettings(pid, { lang_gain_db: next });
+      state.currentProject = updated;
+      // If this lang has a merged file, re-merge so the slider takes effect.
+      const variant = updated.merge_include_preamble ? "with_preamble" : "no_preamble";
+      if (mergeState.info[lang]?.[variant]) {
+        await onMergeRun(pid, [lang], { silent: true });
+      }
+    } catch (e) {
+      toast("Couldn't save gain: " + e.message, "error");
+    }
+  }, 380));
+}
+
+async function onMergeSettingChange(pid, patch) {
+  try {
+    const updated = await Api.mergeSettings(pid, patch);
+    state.currentProject = updated;
+    // Repaint just the merge section — the variant label changes when
+    // include_preamble flips, and we may need to show a different audio file.
+    renderMergeSection(updated);
+  } catch (e) {
+    toast("Couldn't save merge setting: " + e.message, "error");
+  }
+}
+
+async function onMergeRun(pid, langs, opts = {}) {
+  if (!langs.length) return;
+  const proj = state.currentProject;
+  const include_preamble = proj?.merge_include_preamble ?? true;
+
+  for (const lang of langs) {
+    setMergeRowState(lang, "merging…", false);
+  }
+  let res;
+  try {
+    res = await Api.mergePoll(pid, { langs, include_preamble });
+  } catch (e) {
+    toast("Merge failed: " + e.message, "error");
+    for (const lang of langs) setMergeRowState(lang, "merge error", false);
+    return;
+  }
+  state.currentProject = res.project;
+
+  try {
+    mergeState.info = (await Api.mergedInfo(pid)).by_lang || {};
+  } catch {}
+
+  const mergedKeys = Object.keys(res.merged || {});
+  const errorKeys = Object.keys(res.errors || {});
+  for (const lang of mergedKeys) {
+    refreshMergeRow(lang);
+  }
+  for (const lang of errorKeys) {
+    setMergeRowState(lang, `error: ${res.errors[lang]}`, false);
+  }
+  if (!opts.silent) {
+    if (mergedKeys.length && !errorKeys.length) {
+      toast(`Merged ${mergedKeys.length} language${mergedKeys.length === 1 ? "" : "s"}.`, "ok", 1800);
+    } else if (mergedKeys.length && errorKeys.length) {
+      toast(`Merged ${mergedKeys.length} · ${errorKeys.length} failed`, "warn");
+    } else if (errorKeys.length) {
+      toast(`Merge failed for ${errorKeys.length} language${errorKeys.length === 1 ? "" : "s"}.`, "error");
+    }
+  }
+}
+
+function setMergeRowState(lang, text, stale) {
+  const row = document.querySelector(`.merge-row[data-lang="${lang}"]`);
+  if (!row) return;
+  const el = row.querySelector(".merge-state");
+  if (el) el.textContent = text;
+  row.classList.toggle("stale", !!stale);
+}
+
+function refreshMergeRow(lang) {
+  const row = document.querySelector(`.merge-row[data-lang="${lang}"]`);
+  if (!row) return;
+  const proj = state.currentProject;
+  if (!proj) return;
+  const variant = proj.merge_include_preamble ? "with_preamble" : "no_preamble";
+  const info = (mergeState.info[lang] || {})[variant];
+  const player = row.querySelector(".merge-player");
+  if (info) {
+    player.hidden = false;
+    // Bust the cache so the freshly-written MP3 actually loads.
+    player.src = `${mergedAudioUrl(proj.id, lang, variant)}?t=${info.mtime}`;
+    setMergeRowState(
+      lang,
+      info.stale
+        ? "out of date — re-merge after regenerating"
+        : `merged · ${formatTime(new Date(info.mtime * 1000).toISOString())}`,
+      !!info.stale,
+    );
+  } else {
+    player.hidden = true;
+    player.removeAttribute("src");
+    setMergeRowState(lang, "not merged yet", false);
+  }
+  row.querySelector(".merge-variant").textContent =
+    proj.merge_include_preamble ? "(with preamble)" : "(no preamble)";
 }
 
 // --------------------------------------------------------------------------
@@ -1210,6 +1436,12 @@ async function finalizeJob(job) {
       for (const lang of Object.keys(job.by_lang || {})) {
         updateCellTranslation(sid, lang, proj);
         updateCellAudio(sid, lang, proj);
+      }
+      // Source audio for one segment just changed → any merged file is now
+      // out of date for the affected langs. Refresh the merge section so the
+      // stale indicator surfaces without a full page reload.
+      if (proj.domain === "poll" && job.status !== "error") {
+        renderMergeSection(proj);
       }
     }
   } catch {}
