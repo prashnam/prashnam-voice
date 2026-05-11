@@ -66,6 +66,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 # folder lives there; the server mounts it read-only so the in-app viewer
 # can fetch markdown without going outside the project tree.
 DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
+# Visual guide lives at repo_root/guide/index.html — a single self-contained
+# HTML page with base64-embedded screenshots. Served at /guide.
+GUIDE_DIR = Path(__file__).resolve().parents[2] / "guide"
 
 # Curated whitelist + display order so we don't accidentally surface
 # unrelated markdown that lands in /docs later.
@@ -76,7 +79,6 @@ DOC_INDEX = [
 EXTRA_DOC_FILES = {
     "PLAN.md":             {"title": "PLAN",  "summary": "Tier 1 + Tier 2 milestones, design decisions, status."},
     "README.md":            {"title": "README", "summary": "Top-level project overview."},
-    "guide/README.md":      {"title": "Guide", "summary": "Visual tour of the web app."},
 }
 
 
@@ -1111,6 +1113,15 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
     @api.get("/docs")
     def docs_page():
         return FileResponse(STATIC_DIR / "docs.html", media_type="text/html")
+
+    @api.get("/guide")
+    def guide_page():
+        """Self-contained visual walkthrough (one HTML file with embedded
+        screenshots). Linked from the topbar and the help modal."""
+        guide_html = GUIDE_DIR / "index.html"
+        if not guide_html.exists():
+            raise HTTPException(404, "guide/index.html is missing — rebuild it")
+        return FileResponse(guide_html, media_type="text/html")
 
     @api.get("/api/docs")
     def list_docs() -> list[dict]:
