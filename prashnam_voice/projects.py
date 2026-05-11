@@ -197,6 +197,16 @@ class Project:
     # language. Global is always applied. Substitution is whole-token
     # only — `\bKEY\b` — so BJP doesn't smash into "objpop".
     lexicon: dict[str, dict[str, str]] = field(default_factory=dict)
+    # Merge (poll-only): controls how the on-demand merged audio is
+    # assembled from question + options. Persists last-used values so the
+    # next merge defaults to the same settings.
+    merge_gap_seconds: float = 1.0
+    merge_include_beep: bool = True
+    merge_include_preamble: bool = True
+    # Per-language post-merge gain offset in dB, capped to ±6 in the UI and
+    # again in update_merge_settings. Lets the user nudge a quieter voice up
+    # without retranslating every segment.
+    lang_gain_db: dict[str, float] = field(default_factory=dict)
     segments: list[Segment] = field(default_factory=list)
 
     def to_json(self) -> dict:
@@ -226,6 +236,14 @@ class Project:
             lexicon={
                 scope: dict(entries or {})
                 for scope, entries in (d.get("lexicon") or {}).items()
+            },
+            merge_gap_seconds=float(d.get("merge_gap_seconds", 1.0) or 1.0),
+            merge_include_beep=bool(d.get("merge_include_beep", True)),
+            merge_include_preamble=bool(d.get("merge_include_preamble", True)),
+            lang_gain_db={
+                k: float(v)
+                for k, v in (d.get("lang_gain_db") or {}).items()
+                if isinstance(v, (int, float))
             },
             segments=[Segment.from_json(s) for s in (d.get("segments") or [])],
         )
@@ -352,6 +370,8 @@ def effective_text(
     segment: Segment,
     lang: str | None = None,
     rotation_id: str = CANONICAL_ROTATION,
+    *,
+    force_use_template: bool | None = None,
 ) -> str:
     """The text that will actually be translated and spoken, after:
       1. applying any pronunciation lexicon entries (global + per-lang),
@@ -364,6 +384,10 @@ def effective_text(
     language so the per-language lexicon can override the global one.
     Without `lang` only the global lexicon applies (used for translation
     where one input becomes N outputs).
+
+    `force_use_template` overrides the segment's stored flag — used by the
+    merge pipeline to synthesize a one-off "preamble on" / "preamble off"
+    variant of the question without mutating segment state.
     """
     from .text_normalize import numerals_to_words
 
@@ -377,7 +401,8 @@ def effective_text(
 
     # 2. Template wrapping
     raw = body
-    if segment.use_template:
+    use_template = segment.use_template if force_use_template is None else bool(force_use_template)
+    if use_template:
         if segment.type == "question":
             tmpl = (project.question_template or "").strip()
             if tmpl:
@@ -490,6 +515,14 @@ class ProjectStore:
 
     def project_json(self, pid: str) -> Path:
         return self.project_dir(pid) / "project.json"
+
+    def merged_dir(self, pid: str) -> Path:
+        return self.project_dir(pid) / "merged"
+
+    def merged_path(self, pid: str, lang: str, variant: str) -> Path:
+        """Where the on-demand merged MP3 for one (lang, preamble-variant)
+        is written. `variant` is 'with_preamble' or 'no_preamble'."""
+        return self.merged_dir(pid) / f"{lang}_{variant}.mp3"
 
     def audio_dir(
         self, pid: str, seg_id: str, lang: str, rotation_id: str = CANONICAL_ROTATION
@@ -729,6 +762,45 @@ class ProjectStore:
                 for s in p.segments:
                     s.translations = {}
                     s.current_takes = {}
+
+        return self.mutate(pid, _do)
+
+    # ------------------------------------------------------------------
+    # Merge settings + per-language gain
+    # ------------------------------------------------------------------
+
+    def update_merge_settings(
+        self,
+        pid: str,
+        *,
+        gap_seconds: float | None = None,
+        include_beep: bool | None = None,
+        include_preamble: bool | None = None,
+        lang_gain_db: dict[str, float] | None = None,
+    ) -> Project:
+        """Patch the merge defaults persisted on the project. `lang_gain_db`
+        replaces the whole map (None = leave as-is); values are clamped to
+        ±GAIN_RANGE_DB."""
+        from .audio import GAIN_RANGE_DB
+
+        def _do(p: Project) -> None:
+            if gap_seconds is not None:
+                p.merge_gap_seconds = max(0.0, min(5.0, float(gap_seconds)))
+            if include_beep is not None:
+                p.merge_include_beep = bool(include_beep)
+            if include_preamble is not None:
+                p.merge_include_preamble = bool(include_preamble)
+            if lang_gain_db is not None:
+                cleaned: dict[str, float] = {}
+                for code, db in lang_gain_db.items():
+                    if code not in LANGUAGES:
+                        continue
+                    try:
+                        v = float(db)
+                    except (TypeError, ValueError):
+                        continue
+                    cleaned[code] = max(-GAIN_RANGE_DB, min(GAIN_RANGE_DB, v))
+                p.lang_gain_db = cleaned
 
         return self.mutate(pid, _do)
 

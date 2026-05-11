@@ -13,7 +13,12 @@ import soundfile as sf
 
 from . import __version__
 from . import engines
-from .audio import wav_to_mp3
+from .audio import (
+    LOUDNESS_VERSION,
+    concat_to_mp3,
+    normalize_loudness,
+    wav_to_mp3,
+)
 from .cache import cache_path, link_or_copy
 from .config import (
     ALL_LANG_CODES,
@@ -30,6 +35,13 @@ from .projects import (
     Segment,
     effective_text,
 )
+
+
+def _cache_model_id(tts_name: str) -> str:
+    """Cache key namespace for synthesized clips. Includes LOUDNESS_VERSION so
+    re-encoding the normalization recipe invalidates the existing on-disk
+    cache instead of returning pre-fix (quieter) audio."""
+    return f"{tts_name}|{LOUDNESS_VERSION}"
 
 log = logging.getLogger(__name__)
 
@@ -103,9 +115,10 @@ def synthesize_segment_lang(
     pace = project.pace_for(lang, segment)
 
     tts, cfg = engines.get_tts()
-    cached = cache_path(text, lang, voice, pace, model_id=tts.name)
+    cached = cache_path(text, lang, voice, pace, model_id=_cache_model_id(tts.name))
     if not cached.exists():
         mp3_bytes = tts.synthesize(text, lang, voice, pace, cfg)
+        mp3_bytes = normalize_loudness(mp3_bytes)
         cached.parent.mkdir(parents=True, exist_ok=True)
         cached.write_bytes(mp3_bytes)
     duration = _read_mp3_duration(cached)
@@ -261,13 +274,14 @@ def run_pipeline(
             if on_update:
                 on_update(p)
             for idx, text in enumerate(translations[code]):
-                cached = cache_path(text, code, voice, pace, model_id=tts.name)
+                cached = cache_path(text, code, voice, pace, model_id=_cache_model_id(tts.name))
                 target = lang_dir / _item_filename(idx)
                 if cached.exists():
                     link_or_copy(cached, target)
                     p.by_lang[code].cache_hits += 1
                 else:
                     mp3_bytes = tts.synthesize(text, code, voice, pace, tts_cfg)
+                    mp3_bytes = normalize_loudness(mp3_bytes)
                     cached.parent.mkdir(parents=True, exist_ok=True)
                     cached.write_bytes(mp3_bytes)
                     link_or_copy(cached, target)
@@ -399,3 +413,149 @@ def expand_langs(spec: list[str] | None) -> list[str]:
     if not spec:
         return list(ALL_LANG_CODES)
     return spec
+
+
+# ---------------------------------------------------------------------------
+# Poll merge — concatenate question + options into one MP3 per language
+# ---------------------------------------------------------------------------
+
+
+def merge_poll_audio(
+    store: ProjectStore,
+    project: Project,
+    lang: str,
+    *,
+    include_preamble: bool,
+) -> Path:
+    """Build a single MP3 for `lang` containing the question followed by every
+    option in canonical (r0) order. The question audio matches
+    `include_preamble`: if the current take's `use_template` flag agrees, it
+    is reused as-is; otherwise the alternate variant is synthesized on the
+    fly (cached so subsequent merges are instant).
+
+    Options always reuse their current r0 takes — those must exist or the
+    merge fails. Inter-segment gap, beep, and per-language gain come from
+    the project's persisted merge settings.
+    """
+    if project.domain != "poll":
+        raise ValueError(
+            f"merge_poll_audio only supports poll projects (got {project.domain!r})"
+        )
+    if lang not in LANGUAGES:
+        raise ValueError(f"unsupported lang: {lang}")
+
+    question = next((s for s in project.segments if s.type == "question"), None)
+    if question is None:
+        raise ValueError("poll project has no question segment")
+    if not question.english.strip():
+        raise ValueError("question has empty English text — fill it in first")
+
+    options = [s for s in project.segments if s.type == "option"]
+    if not options:
+        raise ValueError("poll project has no options")
+
+    option_paths: list[Path] = []
+    for opt in options:
+        if not opt.english.strip():
+            raise ValueError(f"option {opt.id!r} has empty English text")
+        att = opt.take_for(lang, CANONICAL_ROTATION)
+        if not att:
+            raise ValueError(
+                f"option {opt.id!r} has no {lang} audio yet — generate it before merging"
+            )
+        path = store.attempt_mp3(project.id, opt.id, lang, att, CANONICAL_ROTATION)
+        if not path.exists():
+            raise FileNotFoundError(f"option audio missing on disk: {path}")
+        option_paths.append(path)
+
+    q_path = _resolve_question_audio(
+        store, project, question, lang, include_preamble=include_preamble,
+    )
+
+    variant = "with_preamble" if include_preamble else "no_preamble"
+    out = store.merged_path(project.id, lang, variant)
+    gain_db = float(project.lang_gain_db.get(lang, 0.0))
+    concat_to_mp3(
+        [q_path, *option_paths],
+        out_path=out,
+        gap_s=project.merge_gap_seconds,
+        include_beep=project.merge_include_beep,
+        gain_db=gain_db,
+    )
+    return out
+
+
+def _resolve_question_audio(
+    store: ProjectStore,
+    project: Project,
+    question: Segment,
+    lang: str,
+    *,
+    include_preamble: bool,
+) -> Path:
+    """Return the MP3 file containing the question audio that matches
+    `include_preamble`. Reuses the current take when its wrapping already
+    matches; otherwise translates + synthesizes the alternate variant via
+    the synthesis cache so the segment's persisted takes stay untouched.
+    """
+    att = question.take_for(lang, CANONICAL_ROTATION)
+    if att and bool(question.use_template) == bool(include_preamble):
+        path = store.attempt_mp3(project.id, question.id, lang, att, CANONICAL_ROTATION)
+        if path.exists():
+            return path
+
+    text = effective_text(
+        project, question, lang=lang, rotation_id=CANONICAL_ROTATION,
+        force_use_template=include_preamble,
+    )
+    if not text:
+        raise ValueError("question has no effective text for merge")
+
+    if lang != "en":
+        translator, tcfg = engines.get_translator()
+        translated = translator.translate_batch([text], lang, tcfg)
+        text = translated[0]
+
+    voice = project.voice_for(lang, question)
+    pace = project.pace_for(lang, question)
+    tts, ttscfg = engines.get_tts()
+    cached = cache_path(
+        text, lang, voice, pace, model_id=_cache_model_id(tts.name),
+    )
+    if not cached.exists():
+        mp3_bytes = tts.synthesize(text, lang, voice, pace, ttscfg)
+        mp3_bytes = normalize_loudness(mp3_bytes)
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(mp3_bytes)
+    return cached
+
+
+def merged_audio_info(
+    store: ProjectStore, project: Project, lang: str,
+) -> dict[str, dict | None]:
+    """For each variant, return {'mtime': float, 'stale': bool} if a merged
+    file exists for this language, else None. A merged file is `stale` if
+    any source segment's current-take audio is newer than it."""
+    out: dict[str, dict | None] = {"with_preamble": None, "no_preamble": None}
+    if project.domain != "poll":
+        return out
+
+    source_mtimes: list[float] = []
+    for seg in project.segments:
+        att = seg.take_for(lang, CANONICAL_ROTATION)
+        if not att:
+            continue
+        p = store.attempt_mp3(project.id, seg.id, lang, att, CANONICAL_ROTATION)
+        if p.exists():
+            source_mtimes.append(p.stat().st_mtime)
+    latest_source = max(source_mtimes) if source_mtimes else 0.0
+
+    for variant in ("with_preamble", "no_preamble"):
+        path = store.merged_path(project.id, lang, variant)
+        if path.exists():
+            mtime = path.stat().st_mtime
+            out[variant] = {
+                "mtime": mtime,
+                "stale": latest_source > mtime + 0.5,
+            }
+    return out

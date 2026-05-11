@@ -65,6 +65,34 @@ deep-links still work.
 Force a clean reinstall: `rm -rf .venv` and run `install.py` again.
 Pin a specific port: `PRASHNAM_PORT=9000 python3 install.py`.
 
+### Upgrading an existing checkout
+
+`git pull` and re-run `install.py` — the install script picks up any new
+dependencies on its own and starts the server. No need to wipe `.venv`
+unless an upgrade explicitly says so.
+
+If you prefer the manual path:
+
+```bash
+git pull
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -e .                   # picks up new deps
+prashnam-voice serve
+```
+
+**On-disk state survives upgrades.** Existing projects under `./projects/`
+keep working — new fields in `project.json` are filled in with sensible
+defaults the first time they're loaded. Audio takes already on disk play
+as-is.
+
+**Synthesis cache.** The content-addressed cache at
+`~/.cache/prashnam-voice/audio/` is keyed on `(model, lang, voice, text)`
+plus an internal post-processing version. Upgrades that change the
+post-processing recipe (e.g. introducing loudness normalization) bump
+this key, so old cached MP3s are ignored on the next regenerate and
+fresh ones are written. The orphaned entries are harmless — run
+`prashnam-voice cache-clear` to reclaim the disk if you care.
+
 ### Manual install (terminal)
 
 If your system doesn't run `.py` files on double-click, or you'd just rather
@@ -212,7 +240,7 @@ Audio is content-addressed in `~/.cache/prashnam-voice/audio/<sha256>.mp3` keyed
 | [`docs/rest-api.md`](docs/rest-api.md) | The HTTP API exposed by the running server — every endpoint with request/response shapes, status codes, and the two-queue job model. |
 | [`docs/python-api.md`](docs/python-api.md) | Embedding `prashnam_voice` in your own Python code — projects, pipeline, swapping engines, registering custom adapters or domains, CSV import. |
 | [`PLAN.md`](PLAN.md) | Tier 1 + Tier 2 milestones, status, and design decisions. |
-| [`guide/README.md`](guide/README.md) | Visual tour of the web app (screenshots of every major view). |
+| [`guide/index.html`](guide/index.html) | Visual tour of the web app — single self-contained HTML with embedded screenshots. Open in a browser or visit `/guide` while the server is running. |
 
 ## Notes / known quirks
 
