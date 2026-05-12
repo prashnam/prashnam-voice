@@ -123,6 +123,9 @@ const Api = {
   mergeSettings:(pid, body)        => api("PATCH", `/api/projects/${pid}/merge-settings`, body),
   mergePoll:    (pid, body)        => api("POST",  `/api/projects/${pid}/merge`, body),
   mergedInfo:   (pid)              => api("GET",   `/api/projects/${pid}/merged-info`),
+  editTranslation: (pid, sid, lang, rid, text) =>
+    api("PATCH", `/api/projects/${pid}/segments/${sid}/translation`,
+        { lang, rotation_id: rid || "r0", text }),
 };
 
 function mergedAudioUrl(pid, lang, variant) {
@@ -477,6 +480,7 @@ function renderSettings(proj) {
 
   $("#setting-question-tmpl").value = proj.question_template || "";
   $("#setting-option-tmpl").value = proj.option_template || "";
+  $("#setting-auto-regen").checked = !!proj.auto_regenerate_on_edit;
 
   renderRotationsFieldset(proj);
 
@@ -543,12 +547,15 @@ async function onSaveSettings() {
     if (Object.keys(entries).length) lexicon[ta.dataset.lang] = entries;
   }
 
+  const auto_regenerate_on_edit = $("#setting-auto-regen").checked;
+
   $("#settings-status").textContent = "saving…";
   try {
     await Api.updateProject(proj.id, {
       name, default_pace, langs, paces,
       question_template, option_template,
       lexicon,
+      auto_regenerate_on_edit,
     });
     $("#settings-status").textContent = "saved.";
     $("#proj-name").textContent = name;
@@ -988,6 +995,14 @@ function buildLangCell(proj, seg, lang) {
   const tr = $(".translation", cell);
   tr.textContent = seg.translations[lang]?.r0 || "";
 
+  // "manual" pill flips on when the translation has been hand-edited.
+  // Mirrors the cell-level (r0) flag — per-rotation rows below maintain
+  // their own pill state when rotations are active.
+  const manualPill = $(".manual-pill", cell);
+  if (manualPill) {
+    manualPill.hidden = !(seg.manual_edits?.[lang]?.r0);
+  }
+
   const pill = $(".pill", cell);
   const player = $(".player", cell);
   const perLangTakes = seg.current_takes[lang] || {};
@@ -1037,6 +1052,7 @@ function buildLangCell(proj, seg, lang) {
     strip.className = "rotation-strip";
     for (const rid of activeRotations) {
       const att = perLangTakes[rid];
+      const isManual = !!(seg.manual_edits?.[lang]?.[rid]);
       const row = document.createElement("div");
       row.className = "rotation-row";
       row.innerHTML = `
@@ -1044,6 +1060,8 @@ function buildLangCell(proj, seg, lang) {
         ${att
           ? `<audio controls preload="none" src="${audioUrl(proj.id, seg.id, lang, att, rid)}"></audio>`
           : `<span class="muted small">— pending —</span>`}
+        ${isManual ? `<span class="manual-pill" title="Hand-edited translation">manual</span>` : ""}
+        <button class="ghost rotation-edit" data-rotation="${rid}" title="Hand-edit this rotation's translation">✎</button>
         <button class="ghost rotation-regen" data-rotation="${rid}" title="Regenerate this rotation">⟳</button>
       `;
       strip.appendChild(row);
@@ -1058,11 +1076,20 @@ function buildLangCell(proj, seg, lang) {
           { rotationIds: [btn.dataset.rotation] });
       });
     });
+    strip.querySelectorAll(".rotation-edit").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        openTranslationEditor(cell, proj.id, seg.id, lang, btn.dataset.rotation);
+      });
+    });
   }
 
   $(".regen-cell", cell).addEventListener("click", () => {
     if (!seg.english.trim()) { toast("Type some English text first.", "warn"); return; }
     startJob(proj.id, seg.id, [lang], `cell:${lang}`);
+  });
+
+  $(".edit-trans", cell).addEventListener("click", () => {
+    openTranslationEditor(cell, proj.id, seg.id, lang, "r0");
   });
 
   $(".takes", cell).addEventListener("toggle", async (ev) => {
@@ -1081,6 +1108,55 @@ function buildLangCell(proj, seg, lang) {
   }
 
   return cell;
+}
+
+function openTranslationEditor(cell, pid, sid, lang, rotationId) {
+  const proj = state.currentProject;
+  if (!proj) return;
+  const segObj = proj.segments.find((s) => s.id === sid);
+  const current = segObj?.translations?.[lang]?.[rotationId] || "";
+
+  const view = cell.querySelector(".translation");
+  const editor = cell.querySelector(".translation-edit");
+  const textArea = editor.querySelector(".translation-edit-text");
+  const cancelBtn = editor.querySelector(".translation-edit-cancel");
+  const saveBtn = editor.querySelector(".translation-edit-save");
+
+  textArea.value = current;
+  view.hidden = true;
+  editor.hidden = false;
+  setTimeout(() => textArea.focus(), 0);
+
+  const close = () => {
+    editor.hidden = true;
+    view.hidden = false;
+    cancelBtn.onclick = null;
+    saveBtn.onclick = null;
+  };
+  cancelBtn.onclick = close;
+  saveBtn.onclick = async () => {
+    const text = textArea.value;
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving…";
+    try {
+      const r = await Api.editTranslation(pid, sid, lang, rotationId, text);
+      const seg = state.currentProject?.segments.find((s) => s.id === sid);
+      if (seg) Object.assign(seg, r.segment);
+      close();
+      refreshSegmentCells(sid);
+      toast(text.trim() ? `${lang} translation saved` : `${lang} reverted to auto-translation`, "ok", 1600);
+      if (text.trim()) {
+        // Translation is set + flagged manual; synth alone runs (auto-translate
+        // phase skips because translation_for(lang, rid) is already populated).
+        startJob(pid, sid, [lang], `manual-edit:${lang}:${rotationId}`,
+                 { rotationIds: [rotationId] });
+      }
+    } catch (e) {
+      toast("Save failed: " + e.message, "error");
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Save & synthesize";
+    }
+  };
 }
 
 function populateOverrideRow(cell, proj, seg, lang) {
@@ -1221,6 +1297,14 @@ async function commitEdit(pid, sid, value, card) {
   }
   if (!eff.trim()) {
     setSegStatus(card, "saved · empty (no audio)");
+    return;
+  }
+
+  // Auto-regen is opt-in. With it off (the default) the user clicks the
+  // segment's "Generate" button when they're ready — gives them time to
+  // think between sentences without the 5-second timer kicking off a job.
+  if (!proj.auto_regenerate_on_edit) {
+    setSegStatus(card, "saved · click Generate to regenerate audio");
     return;
   }
 

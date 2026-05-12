@@ -124,6 +124,7 @@ class UpdateProjectRequest(BaseModel):
     question_template: str | None = None
     option_template: str | None = None
     lexicon: dict[str, dict[str, str]] | None = None
+    auto_regenerate_on_edit: bool | None = None
 
 
 class AddSegmentRequest(BaseModel):
@@ -137,6 +138,17 @@ class EditSegmentRequest(BaseModel):
 
 class EditSegmentTemplateRequest(BaseModel):
     use_template: bool
+
+
+class EditSegmentTranslationRequest(BaseModel):
+    """Hand-edit a translation for one (segment, lang, rotation).
+
+    Non-empty `text` is stored and flagged manually-edited so subsequent
+    auto-translates skip it. Empty `text` clears the manual translation,
+    letting the next regen translate fresh from English."""
+    lang: str
+    rotation_id: str = "r0"
+    text: str
 
 
 class EditSegmentOverrideRequest(BaseModel):
@@ -419,6 +431,7 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
                 question_template=req.question_template,
                 option_template=req.option_template,
                 lexicon=req.lexicon,
+                auto_regenerate_on_edit=req.auto_regenerate_on_edit,
             )
         except FileNotFoundError:
             raise HTTPException(404, "project not found")
@@ -622,6 +635,28 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
             seg = store.set_segment_use_template(pid, seg_id, req.use_template)
         except (FileNotFoundError, KeyError):
             raise HTTPException(404, "project or segment not found")
+        return {"segment": seg.to_json()}
+
+    @api.patch("/api/projects/{pid}/segments/{seg_id}/translation")
+    def edit_segment_translation(
+        pid: str, seg_id: str, req: EditSegmentTranslationRequest,
+    ) -> dict:
+        """Persist a hand-edited translation. Does not synthesize — the
+        client follows up with POST .../regenerate?langs=[<lang>] to
+        re-render audio from the new text (auto-translate phase is a
+        no-op for the manually-edited slot)."""
+        if req.lang not in LANGUAGES:
+            raise HTTPException(400, f"unknown lang: {req.lang}")
+        if not (req.rotation_id or "").startswith("r"):
+            raise HTTPException(400, f"invalid rotation_id: {req.rotation_id}")
+        try:
+            seg = store.set_segment_translation(
+                pid, seg_id, req.lang, req.rotation_id, req.text,
+            )
+        except (FileNotFoundError, KeyError):
+            raise HTTPException(404, "project or segment not found")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
         return {"segment": seg.to_json()}
 
     @api.delete("/api/projects/{pid}/segments/{seg_id}")

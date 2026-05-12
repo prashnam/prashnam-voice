@@ -249,6 +249,14 @@ ann1,Please remain seated</pre>
             <div id="setting-langs"></div>
             <p class="muted small">Tick a language to include it in this project. Pace overrides the project default for that language only.</p>
           </fieldset>
+
+          <fieldset class="full-row">
+            <legend>Edit workflow</legend>
+            <label class="inline-checkbox">
+              <input type="checkbox" id="setting-auto-regen" />
+              <span><strong>Auto-regenerate on edit.</strong> When on, edits to a segment's English text trigger translation + synthesis 5&nbsp;seconds after the last keystroke. When off (default), edits are saved but you click <strong>Generate</strong> on the segment row to regenerate.</span>
+            </label>
+          </fieldset>
           <fieldset class="full-row" id="rotations-fieldset" hidden>
             <legend>Option-order rotations</legend>
             <p class="muted small">
@@ -416,7 +424,7 @@ ann1,Please remain seated</pre>
           <span class="dot">🔒</span><span class="label">Lock at end</span>
         </button>
         <span class="seg-status muted"></span>
-        <button class="ghost regen-row" title="Regenerate this segment in all selected languages">⟳ all</button>
+        <button class="ghost regen-row" title="Translate and synthesize this segment in every selected language">Generate</button>
         <button class="ghost danger del-seg" title="Delete this segment">✕</button>
       </header>
       <textarea class="seg-en" rows="2" placeholder="Type English text…"></textarea>
@@ -430,9 +438,18 @@ ann1,Please remain seated</pre>
       <div class="cell-head">
         <span class="lang-name"></span>
         <span class="pill"></span>
+        <span class="manual-pill" hidden title="Translation was hand-edited; auto-translate will skip it">manual</span>
+        <button class="ghost edit-trans" title="Hand-edit the translated text">✎</button>
         <button class="ghost regen-cell" title="Regenerate this cell">⟳</button>
       </div>
       <div class="translation muted" data-role="translation">…</div>
+      <div class="translation-edit" hidden>
+        <textarea class="translation-edit-text" rows="2" placeholder="Type the translation…"></textarea>
+        <div class="translation-edit-actions">
+          <button type="button" class="ghost translation-edit-cancel">Cancel</button>
+          <button type="button" class="primary translation-edit-save">Save &amp; synthesize</button>
+        </div>
+      </div>
       <audio class="player" controls preload="none" hidden></audio>
       <details class="overrides" hidden>
         <summary>Voice / pace</summary>
