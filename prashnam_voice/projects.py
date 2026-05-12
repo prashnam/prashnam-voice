@@ -119,6 +119,11 @@ class Segment:
     translations: dict[str, dict[str, str]] = field(default_factory=dict)
     # Per-language, per-rotation current take pointer.
     current_takes: dict[str, dict[str, str]] = field(default_factory=dict)
+    # Per-language, per-rotation flag marking a translation as user-edited.
+    # Auto-translate skips entries flagged here so the user's wording isn't
+    # silently overwritten on regen. Cleared when the segment's English
+    # text changes — at that point the manual translation is stale anyway.
+    manual_edits: dict[str, dict[str, bool]] = field(default_factory=dict)
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -138,6 +143,10 @@ class Segment:
             paces=dict(d.get("paces") or {}),
             translations=_migrate_per_rotation(d.get("translations")),
             current_takes=_migrate_per_rotation(d.get("current_takes")),
+            manual_edits={
+                lang: {rid: bool(v) for rid, v in (per or {}).items()}
+                for lang, per in (d.get("manual_edits") or {}).items()
+            },
         )
 
     # ----- per-rotation accessors -----
@@ -155,6 +164,11 @@ class Segment:
 
     def set_translation(self, lang: str, rotation_id: str, text: str) -> None:
         self.translations.setdefault(lang, {})[rotation_id] = text
+
+    def is_manually_edited(
+        self, lang: str, rotation_id: str = CANONICAL_ROTATION,
+    ) -> bool:
+        return bool((self.manual_edits.get(lang) or {}).get(rotation_id))
 
 
 @dataclass
@@ -458,12 +472,18 @@ def _prune_stale_rotation_state(project: "Project") -> None:
                 if per:
                     canonical = per.get(CANONICAL_ROTATION) or next(iter(per.values()), "")
                     seg.current_takes[lang] = {CANONICAL_ROTATION: canonical} if canonical else {}
+            for lang, per in list(seg.manual_edits.items()):
+                if per:
+                    canonical = bool(per.get(CANONICAL_ROTATION))
+                    seg.manual_edits[lang] = {CANONICAL_ROTATION: True} if canonical else {}
             continue
         # Options: keep only the rotation ids that are still valid.
         for lang, per in list(seg.translations.items()):
             seg.translations[lang] = {r: t for r, t in per.items() if r in valid}
         for lang, per in list(seg.current_takes.items()):
             seg.current_takes[lang] = {r: aid for r, aid in per.items() if r in valid}
+        for lang, per in list(seg.manual_edits.items()):
+            seg.manual_edits[lang] = {r: v for r, v in per.items() if r in valid}
 
 
 def _apply_lexicon(
@@ -692,6 +712,9 @@ class ProjectStore:
             invalidated.extend(seg.translations.keys())
             seg.translations = {}
             seg.current_takes = {}
+            # Any manual translation edits were tied to the old English
+            # text; they're stale once the source changes.
+            seg.manual_edits = {}
 
         self.mutate(pid, _do)
         return self.load(pid).find_segment(seg_id), invalidated
@@ -754,12 +777,14 @@ class ProjectStore:
                     if s.type == "question" and s.use_template:
                         s.translations = {}
                         s.current_takes = {}
+                        s.manual_edits = {}
             if option_template is not None and option_template != p.option_template:
                 p.option_template = option_template
                 for s in p.segments:
                     if s.type == "option" and s.use_template:
                         s.translations = {}
                         s.current_takes = {}
+                        s.manual_edits = {}
             if auto_regenerate_on_edit is not None:
                 p.auto_regenerate_on_edit = bool(auto_regenerate_on_edit)
             # Lexicon changes affect every effective text everywhere → blow
@@ -772,6 +797,7 @@ class ProjectStore:
                 for s in p.segments:
                     s.translations = {}
                     s.current_takes = {}
+                    s.manual_edits = {}
 
         return self.mutate(pid, _do)
 
@@ -991,6 +1017,54 @@ class ProjectStore:
 
     # ------------------------------------------------------------------
 
+    def set_segment_translation(
+        self,
+        pid: str,
+        seg_id: str,
+        lang: str,
+        rotation_id: str,
+        text: str,
+    ) -> Segment:
+        """Persist a hand-edited translation for one (segment, lang, rotation).
+
+        Non-empty text → store it and flag as manually edited so future
+        auto-translates skip it. Empty text → drop the manual translation
+        and the flag, letting the next regen translate fresh from English.
+
+        Either way, the current take pointer for this slot is cleared
+        because the existing audio was synthesized from a different
+        translation. Old attempt files on disk stay (history)."""
+        if lang not in LANGUAGES:
+            raise ValueError(f"unknown lang: {lang}")
+
+        def _do(p: Project) -> None:
+            seg = p.find_segment(seg_id)
+            if text and text.strip():
+                seg.set_translation(lang, rotation_id, text)
+                seg.manual_edits.setdefault(lang, {})[rotation_id] = True
+            else:
+                per_t = seg.translations.get(lang) or {}
+                per_t.pop(rotation_id, None)
+                if per_t:
+                    seg.translations[lang] = per_t
+                else:
+                    seg.translations.pop(lang, None)
+                per_m = seg.manual_edits.get(lang) or {}
+                per_m.pop(rotation_id, None)
+                if per_m:
+                    seg.manual_edits[lang] = per_m
+                else:
+                    seg.manual_edits.pop(lang, None)
+            per_c = seg.current_takes.get(lang) or {}
+            per_c.pop(rotation_id, None)
+            if per_c:
+                seg.current_takes[lang] = per_c
+            else:
+                seg.current_takes.pop(lang, None)
+
+        self.mutate(pid, _do)
+        return self.load(pid).find_segment(seg_id)
+
     def set_segment_use_template(
         self, pid: str, seg_id: str, use: bool
     ) -> Segment:
@@ -1006,6 +1080,7 @@ class ProjectStore:
             seg.use_template = bool(use)
             seg.translations = {}
             seg.current_takes = {}
+            seg.manual_edits = {}
 
         self.mutate(pid, _do)
         return self.load(pid).find_segment(seg_id)
