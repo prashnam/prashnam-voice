@@ -27,9 +27,6 @@ def _select_device_dtype() -> tuple[str, torch.dtype]:
     return "cpu", torch.float32
 
 
-# ~10 s of audio at 87 frames/sec — caps the rare runaway where sampling
-# fails to emit EOS. Normal poll clips terminate naturally at 1-3 s.
-MAX_AUDIO_TOKENS = 900
 # Floor to prevent the sampler from picking EOS on the first step — without
 # this, very short Indic prompts (e.g. "Party B" → "கட்சி பி") sometimes
 # produce a 1-sample waveform.
@@ -98,6 +95,12 @@ class TTS:
 
         last_len = 0
         for attempt in range(1, MAX_RETRIES + 1):
+            # No explicit max_new_tokens — the model uses its own
+            # generation_config max. We used to cap at ~10s to bound rare
+            # runaway sampling, but it was clipping legitimate Indic prompts
+            # (translated speech runs 1.5-2× longer than English) so we let
+            # the model decide. If unbounded-runaway clips show up in
+            # practice, reintroduce a cap here.
             gen = self.model.generate(
                 input_ids=desc_in.input_ids,
                 attention_mask=desc_in.attention_mask,
@@ -105,7 +108,6 @@ class TTS:
                 prompt_attention_mask=prompt_in.attention_mask,
                 do_sample=True,
                 min_new_tokens=MIN_AUDIO_TOKENS,
-                max_new_tokens=MAX_AUDIO_TOKENS,
             )
             audio = gen.detach().to("cpu").to(torch.float32).numpy().reshape(-1)
             last_len = audio.size
