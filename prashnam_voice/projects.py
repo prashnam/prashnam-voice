@@ -197,6 +197,12 @@ class Project:
     # language. Global is always applied. Substitution is whole-token
     # only — `\bKEY\b` — so BJP doesn't smash into "objpop".
     lexicon: dict[str, dict[str, str]] = field(default_factory=dict)
+    # When false (default) edits to a segment's English text are saved
+    # but no regen fires — the user clicks "Generate" on the segment row
+    # to translate + synthesize. When true, a regen fires automatically
+    # 5 seconds after the last keystroke. Older projects without this
+    # field default to false on load.
+    auto_regenerate_on_edit: bool = False
     # Merge (poll-only): controls how the on-demand merged audio is
     # assembled from question + options. Persists last-used values so the
     # next merge defaults to the same settings.
@@ -237,6 +243,7 @@ class Project:
                 scope: dict(entries or {})
                 for scope, entries in (d.get("lexicon") or {}).items()
             },
+            auto_regenerate_on_edit=bool(d.get("auto_regenerate_on_edit", False)),
             merge_gap_seconds=float(d.get("merge_gap_seconds", 1.0) or 1.0),
             merge_include_beep=bool(d.get("merge_include_beep", True)),
             merge_include_preamble=bool(d.get("merge_include_preamble", True)),
@@ -717,6 +724,7 @@ class ProjectStore:
         question_template: str | None = None,
         option_template: str | None = None,
         lexicon: dict[str, dict[str, str]] | None = None,
+        auto_regenerate_on_edit: bool | None = None,
     ) -> Project:
         def _do(p: Project):
             if name is not None and name.strip():
@@ -752,6 +760,8 @@ class ProjectStore:
                     if s.type == "option" and s.use_template:
                         s.translations = {}
                         s.current_takes = {}
+            if auto_regenerate_on_edit is not None:
+                p.auto_regenerate_on_edit = bool(auto_regenerate_on_edit)
             # Lexicon changes affect every effective text everywhere → blow
             # away cached translations + takes for the whole project.
             if lexicon is not None and lexicon != p.lexicon:

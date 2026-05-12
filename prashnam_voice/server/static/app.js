@@ -477,6 +477,7 @@ function renderSettings(proj) {
 
   $("#setting-question-tmpl").value = proj.question_template || "";
   $("#setting-option-tmpl").value = proj.option_template || "";
+  $("#setting-auto-regen").checked = !!proj.auto_regenerate_on_edit;
 
   renderRotationsFieldset(proj);
 
@@ -543,12 +544,15 @@ async function onSaveSettings() {
     if (Object.keys(entries).length) lexicon[ta.dataset.lang] = entries;
   }
 
+  const auto_regenerate_on_edit = $("#setting-auto-regen").checked;
+
   $("#settings-status").textContent = "saving…";
   try {
     await Api.updateProject(proj.id, {
       name, default_pace, langs, paces,
       question_template, option_template,
       lexicon,
+      auto_regenerate_on_edit,
     });
     $("#settings-status").textContent = "saved.";
     $("#proj-name").textContent = name;
@@ -1221,6 +1225,14 @@ async function commitEdit(pid, sid, value, card) {
   }
   if (!eff.trim()) {
     setSegStatus(card, "saved · empty (no audio)");
+    return;
+  }
+
+  // Auto-regen is opt-in. With it off (the default) the user clicks the
+  // segment's "Generate" button when they're ready — gives them time to
+  // think between sentences without the 5-second timer kicking off a job.
+  if (!proj.auto_regenerate_on_edit) {
+    setSegStatus(card, "saved · click Generate to regenerate audio");
     return;
   }
 

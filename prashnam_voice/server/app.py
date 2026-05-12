@@ -124,6 +124,7 @@ class UpdateProjectRequest(BaseModel):
     question_template: str | None = None
     option_template: str | None = None
     lexicon: dict[str, dict[str, str]] | None = None
+    auto_regenerate_on_edit: bool | None = None
 
 
 class AddSegmentRequest(BaseModel):
@@ -419,6 +420,7 @@ def build_app(out_root: Path, projects_root: Path | None = None) -> FastAPI:
                 question_template=req.question_template,
                 option_template=req.option_template,
                 lexicon=req.lexicon,
+                auto_regenerate_on_edit=req.auto_regenerate_on_edit,
             )
         except FileNotFoundError:
             raise HTTPException(404, "project not found")
