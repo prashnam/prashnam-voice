@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 POLL_QUESTION_TEMPLATE = (
-    "Namaskar, this is a call from Prashnam, an independent polling agency. "
+    "Namaskar, we are calling from Prashnam, an independent polling agency. "
     "{body}"
 )
 POLL_OPTION_TEMPLATE = "If you think {body}, then press {n}."

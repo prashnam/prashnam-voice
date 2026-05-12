@@ -58,7 +58,7 @@ SECTIONS: list[tuple[str, str | None, str, str, list[str]]] = [
          "<ul>"
          "<li><strong>Gap (s)</strong> — silence inserted between segments. Defaults to 1.0&nbsp;s; bump it up for slower-paced flows or down for tight ones.</li>"
          "<li><strong>Beep at end</strong> — appends a short 800&nbsp;Hz pulse so the IVR knows the prompt has finished. On by default.</li>"
-         "<li><strong>Include preamble</strong> — picks between the templated lead-in (&ldquo;Namaskar, this is a call from Prashnam…&rdquo;) and the bare-body version of the question. Toggling this changes which variant the Merge button produces.</li>"
+         "<li><strong>Include preamble</strong> — picks between the templated lead-in (&ldquo;Namaskar, we are calling from Prashnam…&rdquo;) and the bare-body version of the question. Toggling this changes which variant the Merge button produces.</li>"
          "</ul>",
          "All three settings persist per project — the next merge starts with whatever you last used.",
      ]),

@@ -70,10 +70,19 @@ ALL_EDGE_KEYS = (*DTMF_KEYS, *SPECIAL_EDGE_KEYS)
 # Defaults for new projects. The prashnam.ai team can override per-project
 # from settings; existing projects without these fields stay un-templated.
 DEFAULT_QUESTION_TEMPLATE = (
-    "Namaskar, this is a call from Prashnam, an independent polling agency. "
+    "Namaskar, we are calling from Prashnam, an independent polling agency. "
     "{body}"
 )
 DEFAULT_OPTION_TEMPLATE = "If you think {body}, then press {n}."
+
+# Previously-shipped defaults that translate poorly into Indic languages
+# ("this is a call from…" reads more like a battle cry than a courtesy
+# introduction). Projects pinned to one of these strings on disk are
+# silently migrated to the current DEFAULT_QUESTION_TEMPLATE the next
+# time they're loaded — see ProjectStore.load.
+_STALE_QUESTION_TEMPLATES: frozenset[str] = frozenset({
+    "Namaskar, this is a call from Prashnam, an independent polling agency. {body}",
+})
 
 
 CANONICAL_ROTATION = "r0"
@@ -453,6 +462,26 @@ def effective_text(
     return numerals_to_words(raw)
 
 
+def _migrate_stale_question_template(project: "Project") -> bool:
+    """If the project's `question_template` matches a known-stale default,
+    upgrade it to the current default and invalidate the question audio so
+    the next regen rebuilds with the new wording. Returns True when a
+    migration ran (and the caller should persist), False otherwise.
+
+    Customized preambles (anything not in `_STALE_QUESTION_TEMPLATES`) are
+    left untouched.
+    """
+    if project.question_template not in _STALE_QUESTION_TEMPLATES:
+        return False
+    project.question_template = DEFAULT_QUESTION_TEMPLATE
+    for seg in project.segments:
+        if seg.type == "question" and seg.use_template:
+            seg.translations = {}
+            seg.current_takes = {}
+            seg.manual_edits = {}
+    return True
+
+
 def _prune_stale_rotation_state(project: "Project") -> None:
     """Drop translations and current_takes for rotation ids that no longer
     exist after a rotation change. Always preserves r0 (canonical).
@@ -657,7 +686,13 @@ class ProjectStore:
         path = self.project_json(pid)
         if not path.exists():
             raise FileNotFoundError(pid)
-        return Project.from_json(json.loads(path.read_text(encoding="utf-8")))
+        proj = Project.from_json(json.loads(path.read_text(encoding="utf-8")))
+        if _migrate_stale_question_template(proj):
+            # Migration mutated the project — persist so subsequent loads
+            # skip the check, then return the migrated copy.
+            self._write(proj)
+            log.info("migrated %s to current question template", pid)
+        return proj
 
     def _write(self, proj: Project) -> None:
         proj.updated_at = _now()
