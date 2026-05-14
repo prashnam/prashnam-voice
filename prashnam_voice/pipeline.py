@@ -452,7 +452,7 @@ def merge_poll_audio(
 
     options = [s for s in project.segments if s.type == "option"]
     if not options:
-        raise ValueError("poll project has no options")
+        raise ValueError("no options found to merge — add at least one option below the question")
 
     option_paths: list[Path] = []
     for opt in options:

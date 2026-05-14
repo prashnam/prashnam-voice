@@ -411,6 +411,11 @@ async function renderProject(pid) {
     };
   }
 
+  const generateAllBtn = $("#generate-all");
+  if (generateAllBtn) {
+    generateAllBtn.onclick = () => onGenerateAll(proj.id);
+  }
+
   $("#save-settings").addEventListener("click", onSaveSettings);
 
   renderSettings(proj);
@@ -732,6 +737,19 @@ async function onMergeRun(pid, langs, opts = {}) {
   if (!langs.length) return;
   const proj = state.currentProject;
   const include_preamble = proj?.merge_include_preamble ?? true;
+
+  // Pre-flight: a poll merge needs at least one option. Catching this here
+  // gives the user one clear message instead of N per-language errors.
+  if (proj && proj.domain === "poll") {
+    const optionCount = proj.segments.filter((s) => s.type === "option").length;
+    if (optionCount === 0) {
+      if (!opts.silent) {
+        toast("No options found to merge — add at least one option below the question.", "warn");
+      }
+      for (const lang of langs) setMergeRowState(lang, "no options to merge", false);
+      return;
+    }
+  }
 
   for (const lang of langs) {
     setMergeRowState(lang, "merging…", false);
@@ -1320,6 +1338,29 @@ function triggerRegen(pid, sid, langs, sourceEnglish) {
     return;
   }
   startJob(pid, sid, langs, sourceEnglish);
+}
+
+function onGenerateAll(pid) {
+  const proj = state.currentProject;
+  if (!proj || !proj.langs?.length) return;
+  const ready = proj.segments.filter((s) => s.english.trim());
+  if (!ready.length) {
+    toast("No segments have English text yet — type something first.", "warn");
+    return;
+  }
+  let fired = 0;
+  let skipped = 0;
+  for (const seg of ready) {
+    if (getSegState(seg.id).regenInFlight) { skipped++; continue; }
+    triggerRegen(pid, seg.id, proj.langs, effectiveText(proj, seg, seg.english));
+    fired++;
+  }
+  if (fired) {
+    const tail = skipped ? ` (${skipped} already in flight)` : "";
+    toast(`Queued ${fired} segment${fired === 1 ? "" : "s"} for generation${tail}.`, "ok");
+  } else if (skipped) {
+    toast(`All ${skipped} segment${skipped === 1 ? " is" : "s are"} already regenerating.`, "warn");
+  }
 }
 
 function setAutosave(text) {
